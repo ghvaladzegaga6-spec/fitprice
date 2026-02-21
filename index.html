@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ka">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FitPrice - AI კვების გეგმა</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Helvetica+Neue&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Helvetica Neue', sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="min-h-screen flex flex-col items-center py-12 px-4">
+        
+        <div class="text-center mb-10">
+            <h1 class="text-4xl font-extrabold text-green-600 mb-2">fitprice 🥗</h1>
+            <p class="text-gray-500">მიიღე საჭირო კალორიები მინიმალურ ფასად (2 ნაბიჯის ბაზაზე)</p>
+        </div>
+
+        <div class="bg-white shadow-2xl rounded-2xl p-8 w-full max-w-lg">
+            <form method="POST" class="space-y-6">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        რამდენი კალორიის მიღება გსურთ დღეში?
+                    </label>
+                    <input type="number" name="calories" placeholder="მაგ: 2200" 
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition"
+                           required>
+                </div>
+
+                <button type="submit" 
+                        class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg shadow-lg transform transition active:scale-95">
+                    საუკეთესო ვარიანტის პოვნა ✨
+                </button>
+            </form>
+
+            <div id="loader" class="hidden mt-6 text-center italic text-blue-500">
+                AI ეძებს ფასებს "2 ნაბიჯში"... დაელოდეთ...
+            </div>
+        </div>
+
+        {% if recommendation %}
+        <div class="mt-10 w-full max-w-2xl bg-white border-l-8 border-green-500 shadow-lg rounded-r-xl p-6">
+            <div class="flex items-center mb-4">
+                <span class="text-2xl mr-2">🤖</span>
+                <h2 class="text-xl font-bold text-gray-800">AI-ს შემოთავაზებული გეგმა:</h2>
+            </div>
+            <div class="prose prose-green text-gray-700 leading-relaxed whitespace-pre-wrap">
+                {{ recommendation }}
+            </div>
+            
+            <div class="mt-6 pt-4 border-t border-gray-100 flex justify-between items-center text-sm text-gray-400">
+                <span>წყარო: 2nabiji.ge</span>
+                <span>განახლებულია: ახლახანს</span>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        const form = document.querySelector('form');
+        const loader = document.getElementById('loader');
+        form.addEventListener('submit', () => {
+            loader.classList.remove('hidden');
+        });
+    </script>
+
+</body>
+</html>
