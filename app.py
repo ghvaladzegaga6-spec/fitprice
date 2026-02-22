@@ -24,27 +24,20 @@ def index():
                 df = pd.read_csv(file_name)
                 products_list = df.to_string()
 
-                prompt = f"""
-                ბაზა: {products_list}
-                დავალება: შეადგინე ყველაზე იაფი მენიუ {target_cal} კალორიისა და {target_protein}გ ცილისთვის.
-                პასუხი დააბრუნე ქართულად, ამ ფორმატით:
-                - პროდუქტი: რაოდენობა - ფასი
-                """
+            
+             prompt = f"""
+ბაზა: {products_list}
 
-                # ეს ფორმატი მუშაობს openai==0.28 ვერსიაზე
-                response = openai.ChatCompletion.create(
-                    model="gpt-3.5-turbo",
-                    messages=[{"role": "user", "content": prompt}]
-                )
-                recommendation = response.choices[0].message.content
-            else:
-                recommendation = f"შეცდომა: მონაცემთა ბაზა ({file_name}) ვერ მოიძებნა."
+დავალება:
+შეადგინე ყველაზე ბიუჯეტური მენიუ {target_cal} კალორიისა და {target_protein}გ ცილის მისაღებად.
 
-        except Exception as e:
-            recommendation = f"მოხდა შეცდომა: {str(e)}"
+წესები:
+1. პასუხი დააბრუნე ქართულად.
+2. თითოეული პროდუქტი დაწერე ახალ ხაზზე.
+3. თუ პროდუქტი არის 'კვერცხი', დათვალე ცალობით (მაგ: 5 ცალი) და არა გრამებით.
+4. სხვა პროდუქტებისთვის მიუთითე ზუსტი რაოდენობა (გრამი ან მლ).
+5. ბოლოში აუცილებლად დაწერე: "ჯამური ღირებულება: [თანხა] ლარი".
 
-    return render_template('index.html', recommendation=recommendation)
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+ფორმატი:
+- [პროდუქტის სახელი]: [რაოდენობა] - [ფასი] ლარი
+"""
