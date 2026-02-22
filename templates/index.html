@@ -11,6 +11,10 @@
         .gradient-bg {
             background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
         }
+        .result-content { 
+            white-space: pre-wrap; 
+            line-height: 1.6; 
+        }
     </style>
 </head>
 <body class="gradient-bg min-h-screen">
@@ -21,7 +25,7 @@
                 FIT<span class="text-gray-800">PRICE</span>
             </div>
             <div class="hidden md:flex space-x-6 text-sm font-medium text-gray-600">
-                <a href="#" class="hover:text-green-600 transition">მთავარი</a>
+                <a href="/" class="hover:text-green-600 transition">მთავარი</a>
                 <a href="#" class="hover:text-green-600 transition">როგორ მუშაობს</a>
                 <a href="#" class="hover:text-green-600 transition">კონტაქტი</a>
             </div>
@@ -33,11 +37,11 @@
             <h1 class="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4">
                 მიიღე მაქსიმალური <span class="text-green-600">შედეგი</span> <br class="hidden md:block"> მინიმალურ <span class="text-green-600">ფასად</span>
             </h1>
-            <p class="text-gray-600 text-lg">აირჩიე მაღაზია, მიუთითე მაკროები და დანარჩენი ანდეთ AI-ს</p>
+            <p class="text-gray-600 text-lg">აირჩიე მაღაზია, მიუთითე მაკროები და დანარჩენი ანდეთ ალგორითმს</p>
         </div>
 
         <div class="bg-white shadow-xl shadow-green-100/50 rounded-3xl p-6 md:p-10 border border-green-50">
-            <form action="/" method="POST" class="space-y-8">
+            <form id="diet-form" class="space-y-8">
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="space-y-2">
@@ -76,33 +80,76 @@
                     </div>
                 </div>
 
-                <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-200 transform transition hover:-translate-y-1 active:scale-95">
+                <button type="submit" id="submit-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-200 transform transition hover:-translate-y-1 active:scale-95">
                     საუკეთესო ალტერნატივის პოვნა
                 </button>
             </form>
         </div>
 
-        {% if recommendation %}
-        <div class="mt-12 bg-white rounded-3xl p-6 md:p-10 border-2 border-green-500 shadow-2xl relative overflow-hidden">
+        <div id="result-container" class="hidden mt-12 bg-white rounded-3xl p-6 md:p-10 border-2 border-green-500 shadow-2xl relative overflow-hidden">
             <div class="absolute top-0 right-0 bg-green-500 text-white px-6 py-2 rounded-bl-2xl font-bold text-sm">
-                AI ოპტიმიზირებული
+                ოპტიმიზირებული
             </div>
-            
             <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
                 <span class="bg-green-100 p-2 rounded-lg mr-3">🛒</span> 
                 შენი ბიუჯეტური კალათა
             </h2>
-
-            <div class="prose max-w-none text-gray-700 space-y-4 whitespace-pre-wrap">
-                {{ recommendation | safe }}
-            </div>
+            <div id="recommendation-text" class="result-content text-gray-700 font-medium">
+                </div>
         </div>
-        {% endif %}
     </main>
 
     <footer class="text-center py-10 text-gray-400 text-sm">
-        &copy; 2024 FITPRICE. ყველა უფლება დაცულია.
+        &copy; 2026 FITPRICE. ყველა უფლება დაცულია.
     </footer>
 
+    <script>
+        document.getElementById('diet-form').addEventListener('submit', async function(e) {
+            e.preventDefault(); // აჩერებს გვერდის გადატვირთვას
+            
+            const btn = document.getElementById('submit-btn');
+            const resultContainer = document.getElementById('result-container');
+            const resultText = document.getElementById('recommendation-text');
+
+            // მონაცემების შეგროვება
+            const formData = new FormData(this);
+            const data = {
+                protein: formData.get('protein'),
+                carbs: formData.get('carbs'),
+                fat: formData.get('fat'),
+                calories: formData.get('calories'),
+                budget: formData.get('budget')
+            };
+
+            // ვიზუალური ეფექტი
+            btn.innerText = 'ითვლება...';
+            btn.disabled = true;
+
+            try {
+                // მოთხოვნის გაგზავნა /calculate მისამართზე
+                const response = await fetch('/calculate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                
+                // შედეგის ჩვენება
+                resultContainer.classList.remove('hidden');
+                resultText.innerText = result.result;
+                
+                // ავტომატური სქროლი შედეგზე
+                resultContainer.scrollIntoView({ behavior: 'smooth' });
+
+            } catch (error) {
+                alert('მოხდა შეცდომა. გთხოვთ სცადოთ მოგვიანებით.');
+                console.error(error);
+            } finally {
+                btn.innerText = 'საუკეთესო ალტერნატივის პოვნა';
+                btn.disabled = false;
+            }
+        });
+    </script>
 </body>
 </html>
