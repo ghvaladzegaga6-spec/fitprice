@@ -1,26 +1,39 @@
 def solve_diet(budget, target_macros, products_df):
     selected_items = []
     total_cost = 0
-    consumed_macros = {'p': 0, 'f': 0, 'c': 0}
+    # რეალურად მიღებული მაკროების ათვლა
+    consumed = {'p': 0, 'f': 0, 'c': 0}
 
-    for _, row in products_df.iterrows():
-        if consumed_macros['p'] >= target_macros['protein']: break # მაგალითისთვის ცილაზე
+    # ვახდენთ პროდუქტების სორტირებას (მაგ. ცილის ეფექტურობით)
+    df = products_df.copy()
+    df['efficiency'] = df['protein'] / df['price']
+    df = df.sort_values(by='efficiency', ascending=False)
 
-        # 1. გამოთვლა: რამდენი გრამია საჭირო მაკროებისთვის?
-        needed_p = target_macros['protein'] - consumed_macros['p']
+    for _, row in df.iterrows():
+        # ვამოწმებთ, გვჭირდება თუ არა კიდევ რამე
+        if consumed['p'] >= target_macros['protein'] and \
+           consumed['f'] >= target_macros['fat'] and \
+           consumed['c'] >= target_macros['carbs']:
+            break
+
+        # ვიანგარიშებთ საჭირო რაოდენობას (ყველაზე დეფიციტური მაკროს მიხედვით)
+        # ამ მაგალითში ავიღოთ ცილა, როგორც მთავარი ორიენტირი
+        needed_p = max(0, target_macros['protein'] - consumed['p'])
+        if needed_p <= 0: continue
+        
         use_amount = (needed_p * 100) / row['protein']
 
-        # 2. ფასის ლოგიკა
+        # ფასის ლოგიკა
         if row['pricing_type'] == 'piece':
-            # დაფასოებულია: ვიხდით მთლიან ფასს
             actual_price = row['price']
             display_amount = f"იყიდე 1 შეკვრა, გამოიყენე {round(use_amount)}გ"
         else:
-            # აწონვადია: ვიხდით მხოლოდ იმას, რასაც ავწონით
-            actual_price = (row['price'] * use_amount) / 1000 # თუ ფასი 1 კგ-ზეა
+            # 1კგ-ის ფასიდან გრამების ფასზე გადაყვანა
+            actual_price = (row['price'] * use_amount) / 1000
             display_amount = f"აწონე {round(use_amount)}გ"
 
-        if total_cost + actual_price > budget:
+        # ბიუჯეტის კონტროლი
+        if total_cost + actual_price > budget + 5: # ვაძლევთ 5 ლარიან "ცდომილებას"
             continue
 
         selected_items.append({
@@ -30,15 +43,19 @@ def solve_diet(budget, target_macros, products_df):
         })
         
         total_cost += actual_price
-        consumed_macros['p'] += needed_p # პირობითად
+        consumed['p'] += (row['protein'] * use_amount) / 100
+        consumed['f'] += (row['fat'] * use_amount) / 100
+        consumed['c'] += (row['carbs'] * use_amount) / 100
 
-    return generate_final_response(selected_items, total_cost, budget)
+    return generate_final_response(selected_items, total_cost, budget, consumed)
 
-def generate_final_response(items, total_price, budget):
-    res = "### ✅ ოპტიმალური კალათა\n" if total_price <= budget else "### ⚠️ ბიუჯეტი არ არის საკმარისი\n"
-    res += f"**ჯამური ხარჯი: {total_price:.2f}₾**\n\n"
+def generate_final_response(items, total_price, budget, macros):
+    # მაქსიმალურად მოკლე ფორმატი
+    status = "✅ ოპტიმალური კალათა" if total_price <= budget else "⚠️ ბიუჯეტი არ არის საკმარისი"
+    res = f"### {status}\n**ჯამური ხარჯი: {total_price:.2f}₾**\n\n"
     
     for item in items:
-        res += f"* **{item['name']}** - {item['display']} | ფასი: {item['cost']:.2f}₾\n"
+        res += f"* **{item['name']}** - {item['display']} | {item['cost']:.2f}₾\n"
     
+    res += f"\n**ჯამში:** {round(macros['p'])}გ ცილა | {round(macros['f'])}გ ცხიმი | {round(macros['c'])}გ ნახშირწყალი"
     return res
