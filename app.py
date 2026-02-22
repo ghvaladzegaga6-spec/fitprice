@@ -1,14 +1,16 @@
+import os
+import openai
 import pandas as pd
 from flask import Flask, render_template, request
-import openai
 
 app = Flask(__name__)
 
-# აქ ჩასვი შენი გასაღები
-openai.api_key = "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"
+# გასაღებს პროგრამა ავტომატურად აიღებს სერვერის პარამეტრებიდან
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+    # ... დანარჩენი კოდი უცვლელია ...
     recommendation = ""
     if request.method == 'POST':
         store = request.form.get('store')
@@ -44,4 +46,5 @@ def index():
     return render_template('index.html', recommendation=recommendation)
 
 if __name__ == '__main__':
+
     app.run(debug=True)
