@@ -17,7 +17,7 @@ def index():
         target_protein = request.form.get('protein')
 
         try:
-            # ფაილის სახელი პატარა ასოებით
+            # მაღაზიის სახელს ვაქცევთ პატარა ასოებად (.lower()), რომ CSV იპოვოს
             file_name = f"{store.lower()}.csv"
             
             if os.path.exists(file_name):
@@ -27,7 +27,8 @@ def index():
                 prompt = f"""
                 ბაზა: {products_list}
                 დავალება: შეადგინე ყველაზე იაფი მენიუ {target_cal} კალორიისა და {target_protein}გ ცილისთვის.
-                პასუხი დააბრუნე ქართულად.
+                პასუხი დააბრუნე ქართულად, ამ ფორმატით:
+                - პროდუქტი: რაოდენობა - ფასი
                 """
 
                 # ეს ფორმატი მუშაობს openai==0.28 ვერსიაზე
