@@ -1,29 +1,26 @@
-def solve_diet(budget, target_macros, products_df):
-    selected_items = []
-    total_cost = 0
-    # რეალურად მიღებული მაკროების ათვლა
-    consumed = {'p': 0, 'f': 0, 'c': 0}
+from flask import Flask, render_template, request, jsonify
+import pandas as pd
 
-    # ვახდენთ პროდუქტების სორტირებას (მაგ. ცილის ეფექტურობით)
-    df = products_df.copy()
+app = Flask(__name__)
+
+def solve_diet(budget, target_macros, df):
+    # პროდუქტების დალაგება ცილის ეფექტურობით
     df['efficiency'] = df['protein'] / df['price']
     df = df.sort_values(by='efficiency', ascending=False)
 
+    selected_items = []
+    total_cost = 0
+    consumed = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
+
     for _, row in df.iterrows():
-        # ვამოწმებთ, გვჭირდება თუ არა კიდევ რამე
-        if consumed['p'] >= target_macros['protein'] and \
-           consumed['f'] >= target_macros['fat'] and \
-           consumed['c'] >= target_macros['carbs']:
+        # ვჩერდებით, თუ მაკროები (მაგ. ცილა) შეივსო
+        if consumed['p'] >= target_macros['p']:
             break
 
-        # ვიანგარიშებთ საჭირო რაოდენობას (ყველაზე დეფიციტური მაკროს მიხედვით)
-        # ამ მაგალითში ავიღოთ ცილა, როგორც მთავარი ორიენტირი
-        needed_p = max(0, target_macros['protein'] - consumed['p'])
-        if needed_p <= 0: continue
-        
+        needed_p = max(0, target_macros['p'] - consumed['p'])
+        # ვიანგარიშებთ საჭირო გრამებს
         use_amount = (needed_p * 100) / row['protein']
 
-        # ფასის ლოგიკა
         if row['pricing_type'] == 'piece':
             actual_price = row['price']
             display_amount = f"იყიდე 1 შეკვრა, გამოიყენე {round(use_amount)}გ"
@@ -31,10 +28,6 @@ def solve_diet(budget, target_macros, products_df):
             # 1კგ-ის ფასიდან გრამების ფასზე გადაყვანა
             actual_price = (row['price'] * use_amount) / 1000
             display_amount = f"აწონე {round(use_amount)}გ"
-
-        # ბიუჯეტის კონტროლი
-        if total_cost + actual_price > budget + 5: # ვაძლევთ 5 ლარიან "ცდომილებას"
-            continue
 
         selected_items.append({
             'name': row['product'],
@@ -47,15 +40,46 @@ def solve_diet(budget, target_macros, products_df):
         consumed['f'] += (row['fat'] * use_amount) / 100
         consumed['c'] += (row['carbs'] * use_amount) / 100
 
-    return generate_final_response(selected_items, total_cost, budget, consumed)
+    # პასუხის ფორმატირება
+    is_enough = total_cost <= budget
+    status = "✅ ოპტიმალური კალათა" if is_enough else "⚠️ ბიუჯეტი არ არის საკმარისი"
+    
+    response = f"### {status}\n"
+    if not is_enough:
+        response += f"ამ მაკროებისთვის მინიმუმ საჭიროა: **{total_cost:.2f}₾**\n\n"
+    else:
+        response += f"**ჯამური ხარჯი: {total_cost:.2f}₾**\n\n"
 
-def generate_final_response(items, total_price, budget, macros):
-    # მაქსიმალურად მოკლე ფორმატი
-    status = "✅ ოპტიმალური კალათა" if total_price <= budget else "⚠️ ბიუჯეტი არ არის საკმარისი"
-    res = f"### {status}\n**ჯამური ხარჯი: {total_price:.2f}₾**\n\n"
+    for item in selected_items:
+        response += f"* **{item['name']}** - {item['display']} | {item['cost']:.2f}₾\n"
     
-    for item in items:
-        res += f"* **{item['name']}** - {item['display']} | {item['cost']:.2f}₾\n"
+    response += f"\n**ჯამში:** {round(consumed['p'])}გ ცილა | {round(consumed['f'])}გ ცხიმი | {round(consumed['c'])}გ ნახშირწყალი"
     
-    res += f"\n**ჯამში:** {round(macros['p'])}გ ცილა | {round(macros['f'])}გ ცხიმი | {round(macros['c'])}გ ნახშირწყალი"
-    return res
+    return response
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/calculate', methods=['POST'])
+def calculate():
+    try:
+        data = request.json
+        budget = float(data.get('budget', 0))
+        target_macros = {
+            'p': float(data.get('protein', 0)),
+            'f': float(data.get('fat', 0)),
+            'c': float(data.get('carbs', 0)),
+            'cal': float(data.get('calories', 0))
+        }
+
+        # CSV-ს წაკითხვა
+        df = pd.read_csv('2nabiji.csv')
+        
+        result = solve_diet(budget, target_macros, df)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'result': f"მოხდა შეცდომა: {str(e)}"})
+
+if __name__ == '__main__':
+    app.run(debug=True)
