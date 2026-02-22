@@ -1,4 +1,4 @@
 flask
 pandas
 gunicorn
-openai
+openai==0.28
