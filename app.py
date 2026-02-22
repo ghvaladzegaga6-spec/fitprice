@@ -41,11 +41,12 @@ def solve_diet(budget, target_macros, df):
         consumed['c'] += (row['carbs'] * use_amount) / 100
 
     # პასუხის ფორმატირება
-    is_enough = total_cost <= budget
+    # თუ ბიუჯეტი 0-ია, ჩავთვალოთ რომ შეზღუდვა არ გვაქვს
+    is_enough = (total_cost <= budget) if budget > 0 else True
     status = "✅ ოპტიმალური კალათა" if is_enough else "⚠️ ბიუჯეტი არ არის საკმარისი"
     
     response = f"### {status}\n"
-    if not is_enough:
+    if budget > 0 and not is_enough:
         response += f"ამ მაკროებისთვის მინიმუმ საჭიროა: **{total_cost:.2f}₾**\n\n"
     else:
         response += f"**ჯამური ხარჯი: {total_cost:.2f}₾**\n\n"
@@ -65,12 +66,19 @@ def index():
 def calculate():
     try:
         data = request.json
-        budget = float(data.get('budget', 0))
+        
+        # დამხმარე ფუნქცია ტექსტის რიცხვად გადასაყვანად (ცარიელი ველის თავიდან ასაცილებლად)
+        def clean_float(val):
+            if val is None or str(val).strip() == "":
+                return 0.0
+            return float(val)
+
+        budget = clean_float(data.get('budget'))
         target_macros = {
-            'p': float(data.get('protein', 0)),
-            'f': float(data.get('fat', 0)),
-            'c': float(data.get('carbs', 0)),
-            'cal': float(data.get('calories', 0))
+            'p': clean_float(data.get('protein')),
+            'f': clean_float(data.get('fat')),
+            'c': clean_float(data.get('carbs')),
+            'cal': clean_float(data.get('calories'))
         }
 
         # CSV-ს წაკითხვა
@@ -79,7 +87,7 @@ def calculate():
         result = solve_diet(budget, target_macros, df)
         return jsonify({'result': result})
     except Exception as e:
-        return jsonify({'result': f"მოხდა შეცდომა: {str(e)}"})
+        return jsonify({'result': f"მოხდა შეცდომა მონაცემების დამუშავებისას: {str(e)}"})
 
 if __name__ == '__main__':
     app.run(debug=True)
