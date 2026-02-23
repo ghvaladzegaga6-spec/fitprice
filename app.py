@@ -12,7 +12,7 @@ def clean_float(val):
         return 0.0
 
 def solve_diet(budget, target, df):
-    # სვეტების გასუფთავება
+    # სვეტების ფორმატირება
     for col in ['protein', 'fat', 'carbs', 'calories', 'price']:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
@@ -21,15 +21,13 @@ def solve_diet(budget, target, df):
     current = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
     used_names = set()
 
-    # ოპტიმიზაციის ციკლი
+    # ოპტიმიზაციის ციკლი (მაქს. 15 პროდუქტი)
     for _ in range(15):
         def_p = max(0, target['p'] - current['p'])
         def_cal = max(0, target['cal'] - current['cal'])
         
-        if def_p <= 1 and def_cal <= 10:
-            break
+        if def_p <= 2 and def_cal <= 20: break
             
-        # ეფექტურობის სკორი
         df['score'] = (
             (df['protein'] * (def_p / (target['p'] if target['p'] > 0 else 1))) +
             (df['calories'] / 100 * (def_cal / (target['cal'] if target['cal'] > 0 else 1)))
@@ -40,23 +38,26 @@ def solve_diet(budget, target, df):
         
         row = available.sort_values(by='score', ascending=False).iloc[0]
         
-        # რაოდენობის განსაზღვრა (მაქსიმუმ 400გ ერთ პროდუქტზე მრავალფეროვნებისთვის)
+        # ლოგიკა: რამდენის გამოყენება გვინდა მაკროებისთვის (მაქს 400გ მრავალფეროვნებისთვის)
         p_needed = (def_p * 100 / row['protein']) if row['protein'] > 0 else 400
         cal_needed = (def_cal * 100 / row['calories']) if row['calories'] > 0 else 400
-        grams = min(p_needed, cal_needed, 400)
+        grams_to_use = min(p_needed, cal_needed, 400) 
         
-        if grams < 10: break
+        if grams_to_use < 10: break
 
         if row['pricing_type'] == 'piece':
-            units = math.ceil(grams / 100) # პირობითად 1 ცალი 100გ
-            cost = units * row['price']
-            actual_grams = units * 100
-            display = f"იყიდე {units} ცალი"
+            # ვყიდულობთ 1 მთლიან შეკვრას
+            cost = row['price'] 
+            # ვიყენებთ მხოლოდ იმდენს, რამდენიც მაკროებში ჯდება (მაგ. 1კგ-დან 500გ-ს)
+            actual_grams = grams_to_use 
+            display = f"იყიდე 1 შეკვრა, გამოიყენე {round(actual_grams)}გ"
         else:
-            cost = (row['price'] * grams) / 1000
-            actual_grams = grams
-            display = f"აწონე {round(grams)}გ"
+            # წონითი პროდუქტი (იყიდე ზუსტად იმდენი, რამდენსაც ჭამ)
+            cost = (row['price'] * grams_to_use) / 1000
+            actual_grams = grams_to_use
+            display = f"აწონე და იყიდე {round(grams_to_use)}გ"
 
+        # ბიუჯეტის შემოწმება
         if budget > 0 and (total_cost + cost) > budget:
             used_names.add(row['product'])
             continue
@@ -89,18 +90,19 @@ def index():
 def calculate():
     try:
         data = request.get_json()
-        budget = clean_float(data.get('budget'))
+        store = data.get('store', '2nabiji')
+        csv_path = f"{store}.csv"
+        if not os.path.exists(csv_path): csv_path = '2nabiji.csv'
+
         target = {
             'p': clean_float(data.get('protein')),
             'f': clean_float(data.get('fat')),
             'c': clean_float(data.get('carbs')),
             'cal': clean_float(data.get('calories'))
         }
+        budget = clean_float(data.get('budget'))
         
-        # ფაილის წაკითხვის მცდელობა
-        csv_path = '2nabiji.csv' if os.path.exists('2nabiji.csv') else 'nikora.csv'
         df = pd.read_csv(csv_path)
-        
         result = solve_diet(budget, target, df)
         return jsonify(result)
     except Exception as e:
