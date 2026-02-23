@@ -1,5 +1,4 @@
-product,price,pricing_type,calories,protein,fat,carbs,unit
-სტაფილო,1.65,weight,41,0.9,0.2,9.6,1 კგ
-ქათმის ფილე,16.40,piece,165,31.0,3.6,0.0,1 შეკვრა
-კვერცხი,4.50,piece,155,13.0,11.0,1.1,10 ცალი
-ბანანი,4.45,weight,89,1.1,0.3,22.8,1 კგ
+product,price,pricing_type,calories,protein,fat,carbs
+ქათმის ფილე,16.40,piece,165,31.0,3.6,0.0
+სტაფილო,1.65,weight,41,0.9,0.2,9.6
+კვერცხი (10ც),4.50,piece,155,13.0,11.0,1.1
