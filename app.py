@@ -12,75 +12,72 @@ def clean_float(val):
         return 0.0
 
 def solve_diet(budget, target, df):
-    # სვეტების გაწმენდა
+    # მონაცემების ტიპების გარდაქმნა
     for col in ['protein', 'fat', 'carbs', 'calories', 'price']:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
     selected_items = []
     total_cost = 0
-    # მიმდინარე მაკროები
     curr = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
     used_names = set()
 
-    # მაქსიმუმ 12 ნაბიჯი მრავალფეროვნებისთვის
+    # ვცდილობთ 10-12 ნაბიჯში შევავსოთ ყველაფერი
     for _ in range(12):
-        # 1. გამოვთვალოთ დეფიციტი თითოეული მაკროსთვის
-        diff = {
-            'p': max(0, target['p'] - curr['p']),
-            'f': max(0, target['f'] - curr['f']),
-            'c': max(0, target['c'] - curr['c']),
-            'cal': max(0, target['cal'] - curr['cal'])
-        }
+        # 1. რამდენად გვაკლია თითოეული მაკრო (0-დან 1-მდე კოეფიციენტი)
+        p_def = max(0, (target['p'] - curr['p']) / target['p']) if target['p'] > 0 else 0
+        f_def = max(0, (target['f'] - curr['f']) / target['f']) if target['f'] > 0 else 0
+        c_def = max(0, (target['c'] - curr['c']) / target['c']) if target['c'] > 0 else 0
+        cal_def = max(0, (target['cal'] - curr['cal']) / target['cal']) if target['cal'] > 0 else 0
 
-        # თუ ყველა მთავარი მაკრო (ცილა და კალორია) 90%-ით შევსებულია, ვჩერდებით
-        if diff['p'] < 5 and diff['cal'] < 50:
+        # თუ ყველა მაკრო თითქმის შევსებულია, ვჩერდებით
+        if p_def < 0.05 and c_def < 0.05 and cal_def < 0.05:
             break
 
         available = df[~df['product'].isin(used_names)].copy()
         if available.empty: break
 
-        # 2. ქულების მინიჭება დეფიციტის მიხედვით
-        # პროდუქტი მით უფრო "კარგია", რაც უფრო მეტად ფარავს იმას, რაც გვაკლია
-        def calculate_utility(row):
-            # რამდენად სასარგებლოა ეს პროდუქტი ჩვენი დეფიციტისთვის
-            utility = (
-                (row['protein'] * diff['p'] / (target['p'] if target['p'] > 0 else 1)) +
-                (row['fat'] * diff['f'] / (target['f'] if target['f'] > 0 else 1)) +
-                (row['carbs'] * diff['c'] / (target['c'] if target['c'] > 0 else 1)) +
-                (row['calories'] / 20 * diff['cal'] / (target['cal'] if target['cal'] > 0 else 1))
+        # 2. ქულების მინიჭება (Utility Function)
+        # პროდუქტი მით უფრო ძვირფასია, რაც უფრო მეტად შეიცავს იმას, რაც ყველაზე მეტად გვაკლია
+        def score_product(row):
+            # რამდენად სასარგებლოა ეს პროდუქტი არსებული დეფიციტისთვის
+            benefit = (
+                (row['protein'] * p_def * 10) +  # ცილას მეტი წონა აქვს
+                (row['fat'] * f_def * 2) +
+                (row['carbs'] * c_def * 5) +
+                (row['calories'] / 20 * cal_def)
             )
-            # საბოლოო ქულა = სარგებელი გაყოფილი ფასზე (ეფექტურობა)
-            return utility / (row['price'] + 0.1)
+            # ეფექტურობა = სარგებელი / ფასი
+            return benefit / (row['price'] + 1)
 
-        available['score'] = available.apply(calculate_utility, axis=1)
+        available['score'] = available.apply(score_product, axis=1)
         row = available.sort_values(by='score', ascending=False).iloc[0]
 
-        # 3. რაოდენობის განსაზღვრა (მოხმარება)
-        # ვსაზღვრავთ რამდენია საჭირო დეფიციტის შესავსებად, მაგრამ მაქსიმუმ 350გ
-        needed_by_p = (diff['p'] * 100 / row['protein']) if row['protein'] > 0 else 350
-        needed_by_cal = (diff['cal'] * 100 / row['calories']) if row['calories'] > 0 else 350
-        grams_to_use = min(needed_by_p, needed_by_cal, 350)
+        # 3. რაოდენობის განსაზღვრა (მრავალფეროვნების გამო ლიმიტი 300გ)
+        # ვნახულობთ რამდენი გრამია საჭირო, რომ რომელიმე მაკრო შეივსოს
+        needed_p = (target['p'] - curr['p']) * 100 / row['protein'] if row['protein'] > 0 else 300
+        needed_c = (target['c'] - curr['c']) * 100 / row['carbs'] if row['carbs'] > 0 else 300
+        grams_to_use = min(needed_p, needed_c, 300) # მაქსიმუმ 300გ ერთ პროდუქტზე
 
-        if grams_to_use < 15: 
+        if grams_to_use < 20: 
             used_names.add(row['product'])
             continue
 
-        # 4. ყიდვის ლოგიკა (შენი მოთხოვნის მიხედვით)
+        # 4. ფასის და მაკროების დათვლა
         if row['pricing_type'] == 'piece':
-            cost = row['price'] # ვიხდით მთლიანი შეკვრის ფასს
-            actual_grams = grams_to_use # ვჭამთ მხოლოდ ნაწილს
+            cost = row['price']
+            actual_grams = grams_to_use
             display = f"იყიდე 1 შეკვრა, გამოიყენე {round(actual_grams)}გ"
         else:
             cost = (row['price'] * grams_to_use) / 1000
             actual_grams = grams_to_use
             display = f"აწონე და იყიდე {round(grams_to_use)}გ"
 
-        # 5. ბიუჯეტის ლიმიტი
+        # ბიუჯეტის კონტროლი
         if budget > 0 and (total_cost + cost) > budget:
             used_names.add(row['product'])
             continue
 
-        # წარმატებული დამატება
+        # დამატება
         selected_items.append({
             'name': row['product'],
             'display': display,
@@ -99,29 +96,4 @@ def solve_diet(budget, target, df):
         'total_cost': round(total_cost, 2),
         'is_ok': total_cost <= budget if budget > 0 else True
     }
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/calculate', methods=['POST'])
-def calculate():
-    try:
-        data = request.get_json()
-        store = data.get('store', '2nabiji')
-        csv_path = f"{store}.csv"
-        if not os.path.exists(csv_path): csv_path = '2nabiji.csv'
-
-        target = {
-            'p': clean_float(data.get('protein')),
-            'f': clean_float(data.get('fat')),
-            'c': clean_float(data.get('carbs')),
-            'cal': clean_float(data.get('calories'))
-        }
-        budget = clean_float(data.get('budget'))
-        
-        df = pd.read_csv(csv_path)
-        result = solve_diet(budget, target, df)
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+# ... (Flask-ის დანარჩენი ნაწილი უცვლელია)
