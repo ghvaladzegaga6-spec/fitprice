@@ -11,9 +11,11 @@
         .gradient-bg {
             background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
         }
-        .result-content { 
-            white-space: pre-wrap; 
-            line-height: 1.6; 
+        .macro-card {
+            transition: all 0.3s ease;
+        }
+        .macro-card:hover {
+            transform: translateY(-2px);
         }
     </style>
 </head>
@@ -86,16 +88,37 @@
             </form>
         </div>
 
-        <div id="result-container" class="hidden mt-12 bg-white rounded-3xl p-6 md:p-10 border-2 border-green-500 shadow-2xl relative overflow-hidden">
-            <div class="absolute top-0 right-0 bg-green-500 text-white px-6 py-2 rounded-bl-2xl font-bold text-sm">
-                ოპტიმიზირებული
+        <div id="result-container" class="hidden mt-12 bg-white rounded-3xl p-6 md:p-8 border-2 border-green-500 shadow-2xl overflow-hidden">
+            <div class="flex items-center justify-between mb-8">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center">
+                    <span class="bg-green-100 p-2 rounded-lg mr-3">📋</span> 
+                    შენი გეგმა
+                </h2>
+                <span id="status-badge" class="px-4 py-1 rounded-full text-xs font-bold uppercase"></span>
             </div>
-            <h2 class="text-2xl font-bold text-gray-800 mb-6 flex items-center">
-                <span class="bg-green-100 p-2 rounded-lg mr-3">🛒</span> 
-                შენი ბიუჯეტური კალათა
-            </h2>
-            <div id="recommendation-text" class="result-content text-gray-700 font-medium">
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="border-b border-gray-100">
+                            <th class="pb-4 text-xs font-bold text-gray-400 uppercase">პროდუქტი</th>
+                            <th class="pb-4 text-xs font-bold text-gray-400 uppercase text-center">ინსტრუქცია</th>
+                            <th class="pb-4 text-xs font-bold text-gray-400 uppercase text-right">ფასი</th>
+                        </tr>
+                    </thead>
+                    <tbody id="items-table-body">
+                        </tbody>
+                </table>
+            </div>
+
+            <div class="mt-8 pt-8 border-t border-gray-50">
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="summary-grid">
+                    </div>
+                <div class="mt-6 text-right">
+                    <p class="text-gray-500 text-sm">ჯამური ღირებულება</p>
+                    <p id="total-price-display" class="text-3xl font-black text-green-600"></p>
                 </div>
+            </div>
         </div>
     </main>
 
@@ -105,46 +128,78 @@
 
     <script>
         document.getElementById('diet-form').addEventListener('submit', async function(e) {
-            e.preventDefault(); // აჩერებს გვერდის გადატვირთვას
+            e.preventDefault();
             
             const btn = document.getElementById('submit-btn');
-            const resultContainer = document.getElementById('result-container');
-            const resultText = document.getElementById('recommendation-text');
+            const container = document.getElementById('result-container');
+            const tableBody = document.getElementById('items-table-body');
+            const summaryGrid = document.getElementById('summary-grid');
+            const totalPrice = document.getElementById('total-price-display');
+            const statusBadge = document.getElementById('status-badge');
 
-            // მონაცემების შეგროვება
             const formData = new FormData(this);
-            const data = {
-                protein: formData.get('protein'),
-                carbs: formData.get('carbs'),
-                fat: formData.get('fat'),
-                calories: formData.get('calories'),
-                budget: formData.get('budget')
-            };
+            const data = Object.fromEntries(formData.entries());
 
-            // ვიზუალური ეფექტი
             btn.innerText = 'ითვლება...';
             btn.disabled = true;
 
             try {
-                // მოთხოვნის გაგზავნა /calculate მისამართზე
                 const response = await fetch('/calculate', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
 
-                const result = await response.json();
-                
-                // შედეგის ჩვენება
-                resultContainer.classList.remove('hidden');
-                resultText.innerHTML = result.result;
-                
-                // ავტომატური სქროლი შედეგზე
-                resultContainer.scrollIntoView({ behavior: 'smooth' });
+                const res = await response.json();
+
+                if (res.error) {
+                    alert('შეცდომა: ' + res.error);
+                    return;
+                }
+
+                // 1. ცხრილის შევსება
+                tableBody.innerHTML = '';
+                res.items.forEach(item => {
+                    tableBody.innerHTML += `
+                        <tr class="border-b border-gray-50 hover:bg-green-50/50 transition">
+                            <td class="py-4 font-bold text-gray-800">${item.name}</td>
+                            <td class="py-4 text-center text-gray-600">${item.display}</td>
+                            <td class="py-4 text-right text-green-600 font-bold">${item.cost.toFixed(2)}₾</td>
+                        </tr>
+                    `;
+                });
+
+                // 2. მაკროების ბარათები
+                summaryGrid.innerHTML = `
+                    <div class="bg-gray-50 p-4 rounded-2xl text-center macro-card">
+                        <p class="text-[10px] text-gray-400 uppercase font-bold tracking-widest mb-1">კალორია</p>
+                        <p class="text-lg font-bold text-gray-800">${Math.round(res.totals.cal)}</p>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-2xl text-center macro-card border-b-4 border-blue-200">
+                        <p class="text-[10px] text-blue-400 uppercase font-bold tracking-widest mb-1">ცილა</p>
+                        <p class="text-lg font-bold text-blue-800">${Math.round(res.totals.p)}გ</p>
+                    </div>
+                    <div class="bg-orange-50 p-4 rounded-2xl text-center macro-card border-b-4 border-orange-200">
+                        <p class="text-[10px] text-orange-400 uppercase font-bold tracking-widest mb-1">ნახშირწ.</p>
+                        <p class="text-lg font-bold text-orange-800">${Math.round(res.totals.c)}გ</p>
+                    </div>
+                    <div class="bg-red-50 p-4 rounded-2xl text-center macro-card border-b-4 border-red-200">
+                        <p class="text-[10px] text-red-400 uppercase font-bold tracking-widest mb-1">ცხიმი</p>
+                        <p class="text-lg font-bold text-red-800">${Math.round(res.totals.f)}გ</p>
+                    </div>
+                `;
+
+                // 3. სტატუსი და ჯამური ფასი
+                totalPrice.innerText = res.total_cost.toFixed(2) + '₾';
+                statusBadge.innerText = res.is_ok ? 'ბიუჯეტშია' : 'ბიუჯეტს გადაცდა';
+                statusBadge.className = `px-4 py-1 rounded-full text-xs font-bold uppercase ${res.is_ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`;
+
+                container.classList.remove('hidden');
+                container.scrollIntoView({ behavior: 'smooth' });
 
             } catch (error) {
-                alert('მოხდა შეცდომა. გთხოვთ სცადოთ მოგვიანებით.');
                 console.error(error);
+                alert('სერვერთან კავშირი ვერ დამყარდა');
             } finally {
                 btn.innerText = 'საუკეთესო ალტერნატივის პოვნა';
                 btn.disabled = false;
