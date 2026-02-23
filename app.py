@@ -1,72 +1,63 @@
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import math
+import os
 
 app = Flask(__name__)
 
-# დამხმარე ფუნქცია რიცხვების უსაფრთხო გარდაქმნისთვის
 def clean_float(val):
     try:
-        if val is None or str(val).strip() == "":
-            return 0.0
-        return float(val)
+        return float(val) if val and str(val).strip() != "" else 0.0
     except:
         return 0.0
 
 def solve_diet(budget, target, df):
-    # მონაცემების გასუფთავება
+    # სვეტების გასუფთავება
     for col in ['protein', 'fat', 'carbs', 'calories', 'price']:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
     selected_items = []
     total_cost = 0
     current = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
-    
-    attempts = 0
-    # პროდუქტების სია, რომლებიც უკვე ავირჩიეთ (რომ არ განმეორდეს)
     used_names = set()
 
-    # სანამ კალორიების ან ცილის 95%-ს არ მივაღწევთ
-    while attempts < 15: 
+    # ოპტიმიზაციის ციკლი
+    for _ in range(15):
         def_p = max(0, target['p'] - current['p'])
         def_cal = max(0, target['cal'] - current['cal'])
         
-        if (def_p <= 2 and def_cal <= 20) or attempts > 10:
+        if def_p <= 1 and def_cal <= 10:
             break
             
-        # ფორმულა: ეძებს პროდუქტს, რომელიც საუკეთესოდ ავსებს დეფიციტს ბიუჯეტურ ფასად
+        # ეფექტურობის სკორი
         df['score'] = (
             (df['protein'] * (def_p / (target['p'] if target['p'] > 0 else 1))) +
             (df['calories'] / 100 * (def_cal / (target['cal'] if target['cal'] > 0 else 1)))
         ) / (df['price'] + 0.1)
         
-        # ვირჩევთ საუკეთესოს, რომელიც ჯერ არ გამოგვიყენებია
-        available_df = df[~df['product'].isin(used_names)]
-        if available_df.empty: break
+        available = df[~df['product'].isin(used_names)]
+        if available.empty: break
         
-        row = available_df.sort_values(by='score', ascending=False).iloc[0]
+        row = available.sort_values(by='score', ascending=False).iloc[0]
         
-        # რაოდენობის დათვლა
-        p_needed = (def_p * 100 / row['protein']) if row['protein'] > 0 else 500
-        cal_needed = (def_cal * 100 / row['calories']) if row['calories'] > 0 else 500
+        # რაოდენობის განსაზღვრა (მაქსიმუმ 400გ ერთ პროდუქტზე მრავალფეროვნებისთვის)
+        p_needed = (def_p * 100 / row['protein']) if row['protein'] > 0 else 400
+        cal_needed = (def_cal * 100 / row['calories']) if row['calories'] > 0 else 400
+        grams = min(p_needed, cal_needed, 400)
         
-        grams = min(p_needed, cal_needed, 400) # მაქსიმუმ 400გ ერთ პროდუქტზე
         if grams < 10: break
 
         if row['pricing_type'] == 'piece':
-            units = math.ceil(grams / 100) # დავუშვათ 1 ცალი საშუალოდ 100გ-ია
+            units = math.ceil(grams / 100) # პირობითად 1 ცალი 100გ
             cost = units * row['price']
             actual_grams = units * 100
-            display = f"იყიდე {units} ცალი/შეკვრა"
+            display = f"იყიდე {units} ცალი"
         else:
             cost = (row['price'] * grams) / 1000
             actual_grams = grams
             display = f"აწონე {round(grams)}გ"
 
-        # ბიუჯეტის შემოწმება
         if budget > 0 and (total_cost + cost) > budget:
-            attempts += 1
-            # ვნიშნავთ როგორც გამოყენებულს, რომ შემდეგზე სხვა სცადოს
             used_names.add(row['product'])
             continue
 
@@ -82,7 +73,6 @@ def solve_diet(budget, target, df):
         current['f'] += (row['fat'] * actual_grams) / 100
         current['c'] += (row['carbs'] * actual_grams) / 100
         current['cal'] += (row['calories'] * actual_grams) / 100
-        attempts += 1
 
     return {
         'items': selected_items,
@@ -107,16 +97,11 @@ def calculate():
             'cal': clean_float(data.get('calories'))
         }
         
-        # სცადე ორივე ფაილიდან წაკითხვა
-        try:
-            df = pd.read_csv('2nabiji.csv')
-        except:
-            df = pd.read_csv('nikora.csv')
-            
+        # ფაილის წაკითხვის მცდელობა
+        csv_path = '2nabiji.csv' if os.path.exists('2nabiji.csv') else 'nikora.csv'
+        df = pd.read_csv(csv_path)
+        
         result = solve_diet(budget, target, df)
         return jsonify(result)
     except Exception as e:
         return jsonify({'error': str(e)}), 400
-
-if __name__ == '__main__':
-    app.run(debug=True)
