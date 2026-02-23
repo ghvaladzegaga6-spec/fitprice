@@ -22,73 +22,76 @@ def calculate():
         data = request.get_json()
         df = pd.read_csv('2nabiji.csv')
         
+        # მონაცემების გასუფთავება NaN-ებისგან
+        for col in ['protein', 'fat', 'carbs', 'calories', 'price']:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
         target = {
             'p': clean_float(data.get('protein')),
             'f': clean_float(data.get('fat')),
-            'c': clean_float(data.get('carbs'))
+            'c': clean_float(data.get('carbs')),
+            'cal': clean_float(data.get('calories'))
         }
         budget_input = data.get('budget')
         budget = clean_float(budget_input)
 
+        # მიზანი: მინიმალური ფასი
         obj = []
-        bounds = []
         for _, row in df.iterrows():
-            # ფასი 100 გრამზე
             p_100 = row['price'] if row['pricing_type'] == 'piece' else row['price'] / 10
             obj.append(p_100)
-            
-            # კრიტიკული ცვლილება: თუ 'piece'-ია, მინიმუმ 1 შეკვრა (დაახლოებით 4-5 ერთეული 100გ-იანი)
-            if row['pricing_type'] == 'piece':
-                bounds.append((4.0, 10.0)) # მინიმუმ 400გ (1 შეკვრა), მაქს 1კგ
-            else:
-                bounds.append((0.5, 10.0)) # წონითი: მინიმუმ 50გ
 
-        lhs_ineq = [
-            [-x for x in df['protein'].values],
-            [-x for x in df['fat'].values],
-            [-x for x in df['carbs'].values]
+        # შეზღუდვები (რომ მაკროებს არ გადააცილოს ძლიერად)
+        # ვიყენებთ "ნაკლებობას ან ტოლობას", რომ ზუსტად მოვარტყათ
+        A_eq = [
+            df['protein'].tolist(),
+            df['fat'].tolist(),
+            df['carbs'].tolist()
         ]
-        rhs_ineq = [-target['p'], -target['f'], -target['c']]
+        b_eq = [target['p'], target['f'], target['c']]
 
-        res = linprog(c=obj, A_ub=lhs_ineq, b_ub=rhs_ineq, bounds=bounds, method='highs')
+        # ამოხსნა (0-დან 10-მდე, ანუ მაქს 1კგ პროდუქტზე)
+        res = linprog(c=obj, A_eq=A_eq, b_eq=b_eq, bounds=(0, 10), method='highs')
 
         if not res.success:
-            return jsonify({"error": "შეუძლებელია ამ მაკროების შევსება. გაზარდეთ სამიზნე მაკროები."})
+            # თუ ზუსტი დამთხვევა შეუძლებელია, ვუშვებთ მცირე გადაცდომას (>=)
+            res = linprog(c=obj, A_ub=[[-x for x in row] for row in A_eq], b_ub=[-x for x in b_eq], bounds=(0, 10), method='highs')
 
         final_items = []
-        total_cost = 0
-        actual_macros = {'p': 0, 'f': 0, 'c': 0}
+        total_spending = 0
+        actual_macros = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
         for i, amount in enumerate(res.x):
-            if amount > 0.1:
+            if amount > 0.05: # თუ მინიმუმ 5გ მაინც არის საჭირო
                 row = df.iloc[i]
-                grams = amount * 100
+                grams_needed = amount * 100
                 
                 if row['pricing_type'] == 'piece':
-                    # ვამრგვალებთ შეკვრებამდე. მაგ. 16.40 ლარი
-                    units = math.ceil(grams / 500) # ვთვლით რომ შეკვრა საშუალოდ 500გ-ია
-                    cost = units * row['price']
-                    display = f"იყიდე {units} შეკვრა (სრულად)"
+                    # მაღაზიაში ყიდულობ მთლიან შეკვრას
+                    cost_to_pay = row['price']
+                    instr = f"იყიდე 1 შეკვრა (გამოიყენე {round(grams_needed)}გ)"
                 else:
-                    cost = (row['price'] * grams) / 1000
-                    display = f"აწონე ~{round(grams)}გ"
-                
+                    # აწონადი პროდუქტი
+                    cost_to_pay = (row['price'] * grams_needed) / 1000
+                    instr = f"აწონე ~{round(grams_needed)}გ"
+
                 final_items.append({
                     "name": row['product'],
-                    "display": display,
-                    "cost": round(cost, 2)
+                    "display": instr,
+                    "cost": round(cost_to_pay, 2)
                 })
-                total_cost += cost
-                actual_macros['p'] += (row['protein'] * grams) / 100
-                actual_macros['f'] += (row['fat'] * grams) / 100
-                actual_macros['c'] += (row['carbs'] * grams) / 100
+                
+                total_spending += cost_to_pay
+                actual_macros['p'] += (row['protein'] * grams_needed) / 100
+                actual_macros['f'] += (row['fat'] * grams_needed) / 100
+                actual_macros['c'] += (row['carbs'] * grams_needed) / 100
+                actual_macros['cal'] += (row['calories'] * grams_needed) / 100
 
-        # ბიუჯეტის ლოგიკა: თუ ველი ცარიელი იყო (budget_input == ""), ყოველთვის True-ა
-        is_budget_ok = True if not str(budget_input).strip() else total_cost <= budget
+        is_budget_ok = True if not str(budget_input).strip() else total_spending <= budget
 
         return jsonify({
             "items": final_items,
-            "total_cost": round(total_cost, 2),
+            "total_cost": round(total_spending, 2),
             "totals": {k: round(v) for k, v in actual_macros.items()},
             "is_ok": is_budget_ok
         })
