@@ -3,207 +3,121 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FITPRICE - ჭკვიანი კვება</title>
+    <title>FITPRICE - ჭკვიანი ალგორითმი</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        .gradient-bg {
-            background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
-        }
-        .macro-card {
-            transition: all 0.3s ease;
-        }
-        .macro-card:hover {
-            transform: translateY(-2px);
-        }
+        body { font-family: 'Inter', sans-serif; background: #f9fafb; }
+        .input-disabled { background-color: #e5e7eb !important; cursor: not-allowed; opacity: 0.5; }
     </style>
 </head>
-<body class="gradient-bg min-h-screen">
+<body>
 
-    <nav class="bg-white/80 backdrop-blur-md sticky top-0 z-50 border-b border-green-100">
-        <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-            <div class="text-2xl font-bold text-green-600 tracking-tighter">
-                FIT<span class="text-gray-800">PRICE</span>
-            </div>
-            <div class="hidden md:flex space-x-6 text-sm font-medium text-gray-600">
-                <a href="/" class="hover:text-green-600 transition">მთავარი</a>
-                <a href="#" class="hover:text-green-600 transition">როგორ მუშაობს</a>
-                <a href="#" class="hover:text-green-600 transition">კონტაქტი</a>
-            </div>
-        </div>
-    </nav>
+    <main class="max-w-4xl mx-auto px-4 py-12">
+        <div class="bg-white shadow-2xl rounded-3xl p-8 border border-gray-100">
+            <h2 class="text-3xl font-black text-gray-800 mb-8 text-center uppercase tracking-tight">პერსონალური კალკულატორი</h2>
+            
+            <form id="diet-form" class="space-y-6">
+                <div class="space-y-2">
+                    <label class="text-xs font-bold text-gray-500 uppercase">პროდუქტების კატეგორია</label>
+                    <select name="category" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 transition">
+                        <option value="all">ყველა პროდუქტი</option>
+                        <option value="რძის პროდუქტები">რძის პროდუქტები</option>
+                        <option value="ბოსტნეული">ბოსტნეული</option>
+                        <option value="ხორცი">ხორცი და ფრინველი</option>
+                        <option value="ხილი">ხილი</option>
+                    </select>
+                </div>
 
-    <main class="max-w-4xl mx-auto px-4 py-8 md:py-16">
-        <div class="text-center mb-12">
-            <h1 class="text-4xl md:text-5xl font-extrabold text-gray-900 mb-4">
-                მიიღე მაქსიმალური <span class="text-green-600">შედეგი</span> <br class="hidden md:block"> მინიმალურ <span class="text-green-600">ფასად</span>
-            </h1>
-            <p class="text-gray-600 text-lg">აირჩიე მაღაზია, მიუთითე მაკროები და დანარჩენი ანდეთ ალგორითმს</p>
-        </div>
-
-        <div class="bg-white shadow-xl shadow-green-100/50 rounded-3xl p-6 md:p-10 border border-green-50">
-            <form id="diet-form" class="space-y-8">
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="space-y-2">
-                        <label class="text-sm font-bold text-gray-700 uppercase tracking-wider">აირჩიეთ მაღაზია</label>
-                        <select name="store" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-green-500 outline-none transition cursor-pointer">
-                            <option value="2nabiji">ორი ნაბიჯი</option>
-                            <option value="nikora">ნიკორა</option>
-                            <option value="carrefour">კარფური</option>
-                            <option value="spar">სპარი</option>
-                        </select>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="p-6 bg-green-50 rounded-2xl border border-green-100">
+                        <label class="block text-sm font-bold text-green-700 mb-2 uppercase">ვარიანტი 1: კალორიებით</label>
+                        <input type="number" name="calories" id="cal-input" placeholder="შეიყვანეთ კალორიები" 
+                               class="w-full bg-white border border-green-200 rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-green-500">
                     </div>
 
-                    <div class="space-y-2">
-                        <label class="text-sm font-bold text-gray-700 uppercase tracking-wider">დღიური კალორიები</label>
-                        <input type="number" name="calories" placeholder="მაგ: 2200" required
-                               class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:ring-2 focus:ring-green-500 outline-none transition">
+                    <div class="p-6 bg-blue-50 rounded-2xl border border-blue-100 space-y-4">
+                        <label class="block text-sm font-bold text-blue-700 mb-2 uppercase">ვარიანტი 2: მაკროებით</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <input type="number" name="protein" id="p-input" placeholder="ცილა" class="macro-input w-full bg-white border border-blue-200 rounded-lg px-2 py-3 text-center outline-none">
+                            <input type="number" name="carbs" id="c-input" placeholder="ნახშ." class="macro-input w-full bg-white border border-blue-200 rounded-lg px-2 py-3 text-center outline-none">
+                            <input type="number" name="fat" id="f-input" placeholder="ცხიმი" class="macro-input w-full bg-white border border-blue-200 rounded-lg px-2 py-3 text-center outline-none">
+                        </div>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div class="space-y-2 text-center">
-                        <label class="text-xs font-bold text-gray-500 uppercase">ცილა (გ)</label>
-                        <input type="number" name="protein" placeholder="150" required class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-center outline-none focus:border-green-500">
-                    </div>
-                    <div class="space-y-2 text-center">
-                        <label class="text-xs font-bold text-gray-500 uppercase">ნახშირწ. (გ)</label>
-                        <input type="number" name="carbs" placeholder="200" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-center outline-none focus:border-green-500">
-                    </div>
-                    <div class="space-y-2 text-center">
-                        <label class="text-xs font-bold text-gray-500 uppercase">ცხიმი (გ)</label>
-                        <input type="number" name="fat" placeholder="70" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-center outline-none focus:border-green-500">
-                    </div>
-                    <div class="space-y-2 text-center">
-                        <label class="text-xs font-bold text-green-600 uppercase">ბიუჯეტი (₾)</label>
-                        <input type="number" name="budget" placeholder="სურვილისამებრ" step="0.1" class="w-full bg-green-50 border border-green-200 rounded-lg px-3 py-2 text-center outline-none focus:border-green-500 font-bold text-green-700">
-                    </div>
-                </div>
-
-                <button type="submit" id="submit-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-green-200 transform transition hover:-translate-y-1 active:scale-95">
-                    საუკეთესო ალტერნატივის პოვნა
+                <button type="submit" id="submit-btn" class="w-full bg-gray-900 hover:bg-black text-white font-bold py-4 rounded-xl transition transform active:scale-95">
+                    დაანგარიშება
                 </button>
             </form>
         </div>
 
-        <div id="result-container" class="hidden mt-12 bg-white rounded-3xl p-6 md:p-8 border-2 border-green-500 shadow-2xl overflow-hidden">
-            <div class="flex items-center justify-between mb-8">
-                <h2 class="text-2xl font-bold text-gray-800 flex items-center">
-                    <span class="bg-green-100 p-2 rounded-lg mr-3">📋</span> 
-                    შენი გეგმა
-                </h2>
-                <span id="status-badge" class="px-4 py-1 rounded-full text-xs font-bold uppercase"></span>
-            </div>
-
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead>
-                        <tr class="border-b border-gray-100">
-                            <th class="pb-4 text-xs font-bold text-gray-400 uppercase">პროდუქტი</th>
-                            <th class="pb-4 text-xs font-bold text-gray-400 uppercase text-center">ინსტრუქცია</th>
-                            <th class="pb-4 text-xs font-bold text-gray-400 uppercase text-right">ფასი</th>
-                        </tr>
-                    </thead>
-                    <tbody id="items-table-body">
-                        </tbody>
-                </table>
-            </div>
-
-            <div class="mt-8 pt-8 border-t border-gray-50">
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="summary-grid">
-                    </div>
-                <div class="mt-6 text-right">
-                    <p class="text-gray-500 text-sm">ჯამური ღირებულება</p>
-                    <p id="total-price-display" class="text-3xl font-black text-green-600"></p>
-                </div>
-            </div>
+        <div id="result-container" class="hidden mt-8 bg-white rounded-3xl p-8 border border-gray-100 shadow-xl">
+            <h3 class="text-xl font-bold mb-6">შესავაზებული კალათა:</h3>
+            <div id="items-list" class="space-y-4 mb-8"></div>
+            <div id="totals-display" class="grid grid-cols-4 gap-4 pt-6 border-t border-gray-100"></div>
         </div>
     </main>
 
-    <footer class="text-center py-10 text-gray-400 text-sm">
-        &copy; 2026 FITPRICE. ყველა უფლება დაცულია.
-    </footer>
-
     <script>
-        document.getElementById('diet-form').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const btn = document.getElementById('submit-btn');
-            const container = document.getElementById('result-container');
-            const tableBody = document.getElementById('items-table-body');
-            const summaryGrid = document.getElementById('summary-grid');
-            const totalPrice = document.getElementById('total-price-display');
-            const statusBadge = document.getElementById('status-badge');
+        const calInput = document.getElementById('cal-input');
+        const macroInputs = document.querySelectorAll('.macro-input');
 
-            const formData = new FormData(this);
+        // ბლოკირების ლოგიკა
+        calInput.addEventListener('input', () => {
+            if (calInput.value.length > 0) {
+                macroInputs.forEach(i => { i.disabled = true; i.classList.add('input-disabled'); });
+            } else {
+                macroInputs.forEach(i => { i.disabled = false; i.classList.remove('input-disabled'); });
+            }
+        });
+
+        macroInputs.forEach(input => {
+            input.addEventListener('input', () => {
+                let hasValue = Array.from(macroInputs).some(i => i.value.length > 0);
+                if (hasValue) {
+                    calInput.disabled = true;
+                    calInput.classList.add('input-disabled');
+                } else {
+                    calInput.disabled = false;
+                    calInput.classList.remove('input-disabled');
+                }
+            });
+        });
+
+        document.getElementById('diet-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
             const data = Object.fromEntries(formData.entries());
 
-            btn.innerText = 'ითვლება...';
-            btn.disabled = true;
+            const response = await fetch('/calculate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            const res = await response.json();
+            
+            if(res.error) { alert(res.error); return; }
 
-            try {
-                const response = await fetch('/calculate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
-                });
-
-                const res = await response.json();
-
-                if (res.error) {
-                    alert('შეცდომა: ' + res.error);
-                    return;
-                }
-
-                // 1. ცხრილის შევსება
-                tableBody.innerHTML = '';
-                res.items.forEach(item => {
-                    tableBody.innerHTML += `
-                        <tr class="border-b border-gray-50 hover:bg-green-50/50 transition">
-                            <td class="py-4 font-bold text-gray-800">${item.name}</td>
-                            <td class="py-4 text-center text-gray-600">${item.display}</td>
-                            <td class="py-4 text-right text-green-600 font-bold">${item.cost.toFixed(2)}₾</td>
-                        </tr>
-                    `;
-                });
-
-                // 2. მაკროების ბარათები
-                summaryGrid.innerHTML = `
-                    <div class="bg-gray-50 p-4 rounded-2xl text-center macro-card">
-                        <p class="text-[10px] text-gray-400 uppercase font-bold tracking-widest mb-1">კალორია</p>
-                        <p class="text-lg font-bold text-gray-800">${Math.round(res.totals.cal)}</p>
+            // შედეგების ჩვენება
+            const list = document.getElementById('items-list');
+            list.innerHTML = res.items.map(item => `
+                <div class="flex justify-between items-center p-4 bg-gray-50 rounded-xl">
+                    <div>
+                        <p class="font-bold text-gray-800">${item.name}</p>
+                        <p class="text-sm text-gray-500">${item.display}</p>
                     </div>
-                    <div class="bg-blue-50 p-4 rounded-2xl text-center macro-card border-b-4 border-blue-200">
-                        <p class="text-[10px] text-blue-400 uppercase font-bold tracking-widest mb-1">ცილა</p>
-                        <p class="text-lg font-bold text-blue-800">${Math.round(res.totals.p)}გ</p>
-                    </div>
-                    <div class="bg-orange-50 p-4 rounded-2xl text-center macro-card border-b-4 border-orange-200">
-                        <p class="text-[10px] text-orange-400 uppercase font-bold tracking-widest mb-1">ნახშირწ.</p>
-                        <p class="text-lg font-bold text-orange-800">${Math.round(res.totals.c)}გ</p>
-                    </div>
-                    <div class="bg-red-50 p-4 rounded-2xl text-center macro-card border-b-4 border-red-200">
-                        <p class="text-[10px] text-red-400 uppercase font-bold tracking-widest mb-1">ცხიმი</p>
-                        <p class="text-lg font-bold text-red-800">${Math.round(res.totals.f)}გ</p>
-                    </div>
-                `;
+                    <p class="font-bold text-green-600">${item.cost.toFixed(2)}₾</p>
+                </div>
+            `).join('');
 
-                // 3. სტატუსი და ჯამური ფასი
-                totalPrice.innerText = res.total_cost.toFixed(2) + '₾';
-                statusBadge.innerText = res.is_ok ? 'ბიუჯეტშია' : 'ბიუჯეტს გადაცდა';
-                statusBadge.className = `px-4 py-1 rounded-full text-xs font-bold uppercase ${res.is_ok ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`;
-
-                container.classList.remove('hidden');
-                container.scrollIntoView({ behavior: 'smooth' });
-
-            } catch (error) {
-                console.error(error);
-                alert('სერვერთან კავშირი ვერ დამყარდა');
-            } finally {
-                btn.innerText = 'საუკეთესო ალტერნატივის პოვნა';
-                btn.disabled = false;
-            }
+            document.getElementById('totals-display').innerHTML = `
+                <div class="text-center"><p class="text-xs text-gray-400">კალ</p><p class="font-bold">${res.totals.cal}</p></div>
+                <div class="text-center"><p class="text-xs text-gray-400">ცილა</p><p class="font-bold">${res.totals.p}გ</p></div>
+                <div class="text-center"><p class="text-xs text-gray-400">ნახშ</p><p class="font-bold">${res.totals.c}გ</p></div>
+                <div class="text-center"><p class="text-xs text-gray-400">ცხიმი</p><p class="font-bold">${res.totals.f}გ</p></div>
+            `;
+            document.getElementById('result-container').classList.remove('hidden');
         });
     </script>
 </body>
