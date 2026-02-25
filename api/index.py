@@ -1,3 +1,23 @@
+from flask import Flask, render_template, request, jsonify
+import pandas as pd
+from scipy.optimize import linprog
+import os
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
+
+app = Flask(__name__, template_folder=TEMPLATE_DIR)
+
+def clean_float(val):
+    try:
+        return float(val) if val and str(val).strip() != "" else 0.0
+    except:
+        return 0.0
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
 @app.route('/calculate', methods=['POST'])
 def calculate():
     try:
@@ -14,51 +34,49 @@ def calculate():
         target_c = clean_float(data.get('carbs'))
         target_f = clean_float(data.get('fat'))
 
-        # 1. ფილტრაცია სექციის მიხედვით
         category = data.get('category', 'all')
         if category != 'all':
             df = df[df['section'] == category].copy()
 
-        # 2. ქვედა და ზედა ზღვრის დაწესება (გრამებში)
-        # ჩვენი მიზანია x (რაოდენობა 100გ-ზე) იყოს ან 0, ან 2.0-დან 5.0-მდე
-        # ამისთვის ვიყენებთ 'bounds', მაგრამ linprog-ს მაინც სჭირდება დახმარება
-        
+        # ოპტიმიზაციის პარამეტრები
         obj = (df['price'] / 10).tolist()
         
-        # შეზღუდვები (±15% ცდომილება)
+        # სიზუსტის გაზრდა: ცდომილება მცირდება 3%-მდე (0.97 - 1.03)
         A_ub = [
             df['protein'].tolist(), [-p for p in df['protein'].tolist()],
             df['carbs'].tolist(), [-c for c in df['carbs'].tolist()],
             df['fat'].tolist(), [-f for f in df['fat'].tolist()]
         ]
         b_ub = [
-            target_p * 1.15, -target_p * 0.85,
-            target_c * 1.15, -target_c * 0.85,
-            target_f * 1.15, -target_f * 0.85
+            target_p * 1.03, -target_p * 0.97,
+            target_c * 1.03, -target_c * 0.97,
+            target_f * 1.03, -target_f * 0.97
         ]
 
-        #Bounds: მინიმალური 2.0 (200გ) - მაქსიმალური 5.0 (500გ)
-        # მნიშვნელოვანი: bounds აქ მხოლოდ მათთვისაა, ვინც შერჩეული იქნება
+        #Bounds: 0 ან 1.5-დან (150გ) 5.0-მდე (500გ)
+        # შენიშვნა: linprog-ში მინიმალური ბარიერის (1.5) პირდაპირ ჩაწერა bounds-ში 
+        # აიძულებს პროგრამას ყველა პროდუქტი აიღოს. ამიტომ ვიყენებთ ქვემოთ ფილტრს.
         res = linprog(c=obj, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5), method='highs')
 
         if not res.success:
-            return jsonify({"error": "ვერ მოიძებნა ბიუჯეტური ვარიანტი ამ მაკროებით (200გ-500გ დიაპაზონში)"})
+            # თუ ძალიან მკაცრი სიზუსტით (3%) ვერ იპოვა, ცდის 7%-იან ცდომილებას
+            b_ub = [target_p * 1.07, -target_p * 0.93, target_c * 1.07, -target_c * 0.93, target_f * 1.07, -target_f * 0.93]
+            res = linprog(c=obj, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5), method='highs')
+
+        if not res.success:
+            return jsonify({"error": "შეუძლებელია ამ მაკროების ზუსტად დასმა 150გ-იანი პროდუქტებით. სცადეთ სხვა მონაცემები."})
 
         final_items = []
         total_spending = 0
         totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
-        # 3. შედეგების მკაცრი ვალიდაცია
         for i, x in enumerate(res.x):
             grams = x * 100
             row = df.iloc[i]
-            
-            # თუ პროდუქტი შერჩეულია, მან უნდა დააკმაყოფილოს შენი პირობა
-            # გამონაკლისი მხოლოდ კვერცხზე (ცალობითზე), რადგან 2 კვერცხი 100გ-ია
             is_piece = row['pricing_type'] == 'piece'
-            min_limit = 10 if is_piece else 190 # 190 რომ მცირე დამრგვალება აიტანოს
-
-            if grams >= min_limit:
+            
+            # მინიმალური ბარიერი 150გ (ან ცალობითი პროდუქტისთვის 1 ერთეული)
+            if grams >= 145 or (is_piece and grams > 10): 
                 unit_w = float(row['unit_weight'])
                 
                 if is_piece:
@@ -77,7 +95,7 @@ def calculate():
                     "name": str(row['product']),
                     "display": instr,
                     "cost": round(cost, 2),
-                    "grams": round(grams) # ტესტისთვის დავამატე
+                    "grams": round(grams)
                 })
                 
                 total_spending += cost
@@ -85,10 +103,6 @@ def calculate():
                 totals['f'] += (row['fat'] * grams) / 100
                 totals['c'] += (row['carbs'] * grams) / 100
                 totals['cal'] += (row['calories'] * grams) / 100
-
-        # თუ ფილტრის შემდეგ არაფერი დარჩა
-        if not final_items:
-             return jsonify({"error": "მოთხოვნილი რაოდენობა (200გ-500გ) ვერ ერგება ამ მაკროებს."})
 
         return jsonify({
             "items": final_items,
