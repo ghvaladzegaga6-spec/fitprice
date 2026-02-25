@@ -3,8 +3,6 @@ import pandas as pd
 from scipy.optimize import linprog
 import os
 
-# განვსაზღვროთ საქაღალდეების გზები დინამიურად
-# Vercel-ზე api/index.py-დან ერთი საფეხურით მაღლა უნდა ავიდეთ ფაილების საპოვნელად
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
 
@@ -12,9 +10,7 @@ app = Flask(__name__, template_folder=TEMPLATE_DIR)
 
 def clean_float(val):
     try:
-        if val is None or str(val).strip() == "":
-            return 0.0
-        return float(val)
+        return float(val) if val and str(val).strip() != "" else 0.0
     except:
         return 0.0
 
@@ -26,79 +22,93 @@ def index():
 def calculate():
     try:
         data = request.get_json()
-        
-        # CSV ფაილის გზის სწორად განსაზღვრა
         csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
         
         if not os.path.exists(csv_path):
-            return jsonify({"error": f"მონაცემთა ბაზა ვერ მოიძებნა მისამართზე: {csv_path}"}), 404
+            return jsonify({"error": "მონაცემთა ბაზა ვერ მოიძებნა"}), 404
             
         df = pd.read_csv(csv_path)
-        
-        # კატეგორიის ფილტრი
+
+        # სექციის ფილტრი
         category = data.get('category', 'all')
         if category != 'all':
-            df = df[df['section'] == category]
+            df = df[df['section'] == category].copy()
             if df.empty:
-                return jsonify({"error": f"სექციაში '{category}' პროდუქტები ვერ მოიძებნა."})
+                return jsonify({"error": f"სექციაში '{category}' პროდუქტები არ არის."})
 
-        # მონაცემების ტიპების გარდაქმნა და NaN-ების გასუფთავება
+        # მონაცემების ტიპების გასწორება
         for col in ['protein', 'fat', 'carbs', 'calories', 'price']:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
-        # მომხმარებლის მონაცემები
         target_cal = clean_float(data.get('calories'))
         target_p = clean_float(data.get('protein'))
-        target_f = clean_float(data.get('fat'))
         target_c = clean_float(data.get('carbs'))
+        target_f = clean_float(data.get('fat'))
 
-        # მათემატიკური მატრიცის მომზადება (მიზანი: მინიმალური ფასი 100გ-ზე)
+        # ოპტიმიზაციის მიზანი: მინიმალური ფასი (ფასი მოცემულია 100გ-ზე)
         obj = (df['price'] / 10).tolist() 
-        
-        if target_cal > 0:
-            A_eq = [df['calories'].tolist()]
-            b_eq = [target_cal]
-        else:
-            A_eq = [
-                df['protein'].tolist(),
-                df['fat'].tolist(),
-                df['carbs'].tolist()
-            ]
-            b_eq = [target_p, target_f, target_c]
 
-        # ამოხსნა (0-დან 500გ-მდე თითო პროდუქტზე)
-        res = linprog(c=obj, A_eq=A_eq, b_eq=b_eq, bounds=(0, 5), method='highs')
+        # შეზღუდვების მატრიცები
+        A_ub = []
+        b_ub = []
+
+        if target_cal > 0:
+            # კალორიების დიაპაზონი (მიზნობრივი +- 5%)
+            A_ub.append(df['calories'].tolist())
+            b_ub.append(target_cal * 1.05)
+            A_ub.append((-df['calories']).tolist())
+            b_ub.append(-target_cal * 0.95)
+        else:
+            # მაკროების დიაპაზონი (მიზნობრივი +- 10%)
+            # ცილა
+            A_ub.append(df['protein'].tolist())
+            b_ub.append(target_p * 1.1)
+            A_ub.append((-df['protein']).tolist())
+            b_ub.append(-target_p * 0.9)
+            # ნახშირწყალი
+            A_ub.append(df['carbs'].tolist())
+            b_ub.append(target_c * 1.1)
+            A_ub.append((-df['carbs']).tolist())
+            b_ub.append(-target_c * 0.9)
+            # ცხიმი
+            A_ub.append(df['fat'].tolist())
+            b_ub.append(target_f * 1.1)
+            A_ub.append((-df['fat']).tolist())
+            b_ub.append(-target_f * 0.9)
+
+        # ამოხსნა (ლიმიტი: თითო პროდუქტი მაქსიმუმ 500გ)
+        res = linprog(c=obj, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5), method='highs')
 
         if not res.success:
-            return jsonify({"error": "ვერ მოიძებნა ბიუჯეტური ვერსია. სცადეთ პარამეტრების შეცვლა."})
+            return jsonify({"error": "მოთხოვნილი მაკროებით ბიუჯეტური გეგმა ვერ შედგა. სცადეთ სხვა მონაცემები."})
 
         final_items = []
         total_spending = 0
-        totals = {'p': 0.0, 'f': 0.0, 'c': 0.0, 'cal': 0.0}
+        totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
         for i, x in enumerate(res.x):
-            if x > 0.05: # მინიმუმ 5გ
+            if x > 0.01: # თუ პროდუქტი მინიმუმ 1გ-ია
                 row = df.iloc[i]
-                grams_to_eat = x * 100
+                grams = x * 100
                 
                 if row['pricing_type'] == 'piece':
                     cost = float(row['price'])
-                    instr = f"იყიდე 1 შეკვრა (გამოიყენე {round(grams_to_eat)}გ)"
+                    instr = f"იყიდე 1 ცალი (გამოიყენე {round(grams)}გ)"
                 else:
-                    cost = (float(row['price']) * grams_to_eat) / 1000
-                    instr = f"აწონე {round(grams_to_eat)}გ"
+                    cost = (float(row['price']) * grams) / 1000
+                    instr = f"აწონე ~{round(grams)}გ"
 
                 final_items.append({
-                    "name": str(row['product']), 
-                    "display": instr, 
+                    "name": str(row['product']),
+                    "display": instr,
                     "cost": round(cost, 2)
                 })
                 
                 total_spending += cost
-                totals['p'] += (row['protein'] * grams_to_eat) / 100
-                totals['f'] += (row['fat'] * grams_to_eat) / 100
-                totals['c'] += (row['carbs'] * grams_to_eat) / 100
-                totals['cal'] += (row['calories'] * grams_to_eat) / 100
+                totals['p'] += (row['protein'] * grams) / 100
+                totals['f'] += (row['fat'] * grams) / 100
+                totals['c'] += (row['carbs'] * grams) / 100
+                totals['cal'] += (row['calories'] * grams) / 100
 
         return jsonify({
             "items": final_items,
@@ -107,8 +117,4 @@ def calculate():
         })
 
     except Exception as e:
-        return jsonify({"error": f"სერვერის შეცდომა: {str(e)}"}), 500
-
-# Vercel-ისთვის საჭირო არ არის, მაგრამ ლოკალურად გამოსაყენებლად:
-if __name__ == '__main__':
-    app.run(debug=True)
+        return jsonify({"error": f"შეცდომა: {str(e)}"}), 500
