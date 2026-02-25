@@ -36,65 +36,77 @@ def calculate():
             if df.empty:
                 return jsonify({"error": f"სექციაში '{category}' პროდუქტები არ არის."})
 
-        # მონაცემების ტიპების გასწორება
-        for col in ['protein', 'fat', 'carbs', 'calories', 'price']:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+        # მონაცემების ტიპების გასწორება (დავამატეთ unit_weight)
+        cols_to_fix = ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight']
+        for col in cols_to_fix:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            else:
+                df[col] = 0.0
 
         target_cal = clean_float(data.get('calories'))
         target_p = clean_float(data.get('protein'))
         target_c = clean_float(data.get('carbs'))
         target_f = clean_float(data.get('fat'))
 
-        # ოპტიმიზაციის მიზანი: მინიმალური ფასი (ფასი მოცემულია 100გ-ზე)
+        # ოპტიმიზაციის მიზანი: მინიმალური ფასი
         obj = (df['price'] / 10).tolist() 
 
-        # შეზღუდვების მატრიცები
+        # შეზღუდვების მატრიცები (A_ub და b_ub)
         A_ub = []
         b_ub = []
 
         if target_cal > 0:
-            # კალორიების დიაპაზონი (მიზნობრივი +- 5%)
+            # კალორიების დიაპაზონი (მიზნობრივი +- 10%)
             A_ub.append(df['calories'].tolist())
-            b_ub.append(target_cal * 1.05)
+            b_ub.append(target_cal * 1.1)
             A_ub.append((-df['calories']).tolist())
-            b_ub.append(-target_cal * 0.95)
+            b_ub.append(-target_cal * 0.9)
         else:
-            # მაკროების დიაპაზონი (მიზნობრივი +- 10%)
+            # მაკროების დიაპაზონი (მიზნობრივი +- 15%, რათა "ამოხსნადი" იყოს)
             # ცილა
             A_ub.append(df['protein'].tolist())
-            b_ub.append(target_p * 1.1)
+            b_ub.append(target_p * 1.15)
             A_ub.append((-df['protein']).tolist())
-            b_ub.append(-target_p * 0.9)
+            b_ub.append(-target_p * 0.85)
             # ნახშირწყალი
             A_ub.append(df['carbs'].tolist())
-            b_ub.append(target_c * 1.1)
+            b_ub.append(target_c * 1.15)
             A_ub.append((-df['carbs']).tolist())
-            b_ub.append(-target_c * 0.9)
+            b_ub.append(-target_c * 0.85)
             # ცხიმი
             A_ub.append(df['fat'].tolist())
-            b_ub.append(target_f * 1.1)
+            b_ub.append(target_f * 1.15)
             A_ub.append((-df['fat']).tolist())
-            b_ub.append(-target_f * 0.9)
+            b_ub.append(-target_f * 0.85)
 
-        # ამოხსნა (ლიმიტი: თითო პროდუქტი მაქსიმუმ 500გ)
-        res = linprog(c=obj, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5), method='highs')
+        # ამოხსნა (ლიმიტი: თითო პროდუქტი მაქსიმუმ 1კგ, რომ მეტი არჩევანი ჰქონდეს)
+        res = linprog(c=obj, A_ub=A_ub, b_ub=b_ub, bounds=(0, 10), method='highs')
 
         if not res.success:
-            return jsonify({"error": "მოთხოვნილი მაკროებით ბიუჯეტური გეგმა ვერ შედგა. სცადეთ სხვა მონაცემები."})
+            return jsonify({"error": "ბიუჯეტური გეგმა ვერ შედგა. სცადეთ მაკროების შეცვლა."})
 
         final_items = []
         total_spending = 0
         totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
         for i, x in enumerate(res.x):
-            if x > 0.01: # თუ პროდუქტი მინიმუმ 1გ-ია
+            if x > 0.02: # თუ პროდუქტი მინიმუმ 2გ-ია
                 row = df.iloc[i]
                 grams = x * 100
+                unit_w = float(row['unit_weight'])
                 
                 if row['pricing_type'] == 'piece':
                     cost = float(row['price'])
-                    instr = f"იყიდე 1 ცალი (გამოიყენე {round(grams)}გ)"
+                    if unit_w > 0:
+                        # ვითვლით რამდენი ცალია საჭირო გრამების შესავსებად
+                        count = round(grams / unit_w)
+                        if count == 0: count = 1
+                        instr = f"იყიდე 1 შეკვრა (გამოიყენე {count} ცალი/პაკეტი)"
+                    else:
+                        instr = f"იყიდე 1 შეკვრა (გამოიყენე ~{round(grams)}გ)"
                 else:
+                    # წონითი პროდუქტებისთვის
                     cost = (float(row['price']) * grams) / 1000
                     instr = f"აწონე ~{round(grams)}გ"
 
