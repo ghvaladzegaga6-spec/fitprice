@@ -1,93 +1,64 @@
-from flask import Flask, render_template, request, jsonify
-import pandas as pd
-from scipy.optimize import linprog
-import os
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TEMPLATE_DIR = os.path.join(BASE_DIR, 'templates')
-
-app = Flask(__name__, template_folder=TEMPLATE_DIR)
-
-def clean_float(val):
-    try:
-        return float(val) if val and str(val).strip() != "" else 0.0
-    except:
-        return 0.0
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
 @app.route('/calculate', methods=['POST'])
 def calculate():
     try:
         data = request.get_json()
         csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
-        
-        if not os.path.exists(csv_path):
-            return jsonify({"error": "მონაცემთა ბაზა ვერ მოიძებნა"}), 404
-            
         df = pd.read_csv(csv_path)
 
-        category = data.get('category', 'all')
-        if category != 'all':
-            df = df[df['section'] == category].copy()
-            if df.empty:
-                return jsonify({"error": f"სექციაში '{category}' პროდუქტები არ არის."})
-
-        cols_to_fix = ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight']
-        for col in cols_to_fix:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-            else:
-                df[col] = 0.0
+        # მონაცემების ტიპების გასწორება
+        cols = ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight']
+        for col in cols:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
         target_p = clean_float(data.get('protein'))
         target_c = clean_float(data.get('carbs'))
         target_f = clean_float(data.get('fat'))
-        target_cal = clean_float(data.get('calories'))
 
-        obj = (df['price'] / 10).tolist() 
+        # 1. ფილტრაცია სექციის მიხედვით
+        category = data.get('category', 'all')
+        if category != 'all':
+            df = df[df['section'] == category].copy()
 
-        A_ub = []
-        b_ub = []
+        # 2. ქვედა და ზედა ზღვრის დაწესება (გრამებში)
+        # ჩვენი მიზანია x (რაოდენობა 100გ-ზე) იყოს ან 0, ან 2.0-დან 5.0-მდე
+        # ამისთვის ვიყენებთ 'bounds', მაგრამ linprog-ს მაინც სჭირდება დახმარება
+        
+        obj = (df['price'] / 10).tolist()
+        
+        # შეზღუდვები (±15% ცდომილება)
+        A_ub = [
+            df['protein'].tolist(), [-p for p in df['protein'].tolist()],
+            df['carbs'].tolist(), [-c for c in df['carbs'].tolist()],
+            df['fat'].tolist(), [-f for f in df['fat'].tolist()]
+        ]
+        b_ub = [
+            target_p * 1.15, -target_p * 0.85,
+            target_c * 1.15, -target_c * 0.85,
+            target_f * 1.15, -target_f * 0.85
+        ]
 
-        # მაკროების შეზღუდვები (±15% დიაპაზონი)
-        if target_cal > 0:
-            A_ub.append(df['calories'].tolist()); b_ub.append(target_cal * 1.1)
-            A_ub.append((-df['calories']).tolist()); b_ub.append(-target_cal * 0.9)
-        else:
-            A_ub.append(df['protein'].tolist()); b_ub.append(target_p * 1.15)
-            A_ub.append((-df['protein']).tolist()); b_ub.append(-target_p * 0.85)
-            A_ub.append(df['carbs'].tolist()); b_ub.append(target_c * 1.15)
-            A_ub.append((-df['carbs']).tolist()); b_ub.append(-target_c * 0.85)
-            A_ub.append(df['fat'].tolist()); b_ub.append(target_f * 1.15)
-            A_ub.append((-df['fat']).tolist()); b_ub.append(-target_f * 0.85)
-
-        # მინიმუმ 200გ (2 ერთეული) და მაქსიმუმ 500გ (5 ერთეული)
-        # შენიშვნა: linprog ყოველთვის 0-დან იწყებს, ამიტომ ქვედა ზღვარს 
-        # შედეგების დამუშავებისას უფრო მკაცრად გავფილტრავთ.
+        #Bounds: მინიმალური 2.0 (200გ) - მაქსიმალური 5.0 (500გ)
+        # მნიშვნელოვანი: bounds აქ მხოლოდ მათთვისაა, ვინც შერჩეული იქნება
         res = linprog(c=obj, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5), method='highs')
 
         if not res.success:
-            # თუ 500გ-იანი ლიმიტით ვერ იპოვა, ვზრდით ლიმიტს 1კგ-მდე (10 ერთეული)
-            res = linprog(c=obj, A_ub=A_ub, b_ub=b_ub, bounds=(0, 10), method='highs')
-
-        if not res.success:
-            return jsonify({"error": "ბიუჯეტური გეგმა ვერ შედგა. სცადეთ მაკროების შეცვლა."})
+            return jsonify({"error": "ვერ მოიძებნა ბიუჯეტური ვარიანტი ამ მაკროებით (200გ-500გ დიაპაზონში)"})
 
         final_items = []
         total_spending = 0
         totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
+        # 3. შედეგების მკაცრი ვალიდაცია
         for i, x in enumerate(res.x):
-            # ფილტრი: მხოლოდ პროდუქტები, რომლებიც მინიმუმ 200 გრამია (x >= 2.0)
-            # გამონაკლისი: კვერცხი და ცალობითი პროდუქტები (შეიძლება 200გ-ზე ნაკლები იყოს)
             grams = x * 100
             row = df.iloc[i]
-            is_piece = row['pricing_type'] == 'piece'
             
-            if grams >= 195 or (is_piece and grams > 10): 
+            # თუ პროდუქტი შერჩეულია, მან უნდა დააკმაყოფილოს შენი პირობა
+            # გამონაკლისი მხოლოდ კვერცხზე (ცალობითზე), რადგან 2 კვერცხი 100გ-ია
+            is_piece = row['pricing_type'] == 'piece'
+            min_limit = 10 if is_piece else 190 # 190 რომ მცირე დამრგვალება აიტანოს
+
+            if grams >= min_limit:
                 unit_w = float(row['unit_weight'])
                 
                 if is_piece:
@@ -105,7 +76,8 @@ def calculate():
                 final_items.append({
                     "name": str(row['product']),
                     "display": instr,
-                    "cost": round(cost, 2)
+                    "cost": round(cost, 2),
+                    "grams": round(grams) # ტესტისთვის დავამატე
                 })
                 
                 total_spending += cost
@@ -114,14 +86,14 @@ def calculate():
                 totals['c'] += (row['carbs'] * grams) / 100
                 totals['cal'] += (row['calories'] * grams) / 100
 
+        # თუ ფილტრის შემდეგ არაფერი დარჩა
         if not final_items:
-            return jsonify({"error": "ვერ მოიძებნა პროდუქტები, რომლებიც 200-500გ ფარგლებში აკმაყოფილებენ მოთხოვნას."})
+             return jsonify({"error": "მოთხოვნილი რაოდენობა (200გ-500გ) ვერ ერგება ამ მაკროებს."})
 
         return jsonify({
             "items": final_items,
             "total_cost": round(total_spending, 2),
             "totals": {k: round(v, 1) for k, v in totals.items()}
         })
-
     except Exception as e:
-        return jsonify({"error": f"შეცდომა: {str(e)}"}), 500
+        return jsonify({"error": str(e)}), 500
