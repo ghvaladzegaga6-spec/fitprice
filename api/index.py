@@ -29,14 +29,12 @@ def calculate():
             
         df = pd.read_csv(csv_path)
 
-        # სექციის ფილტრი
         category = data.get('category', 'all')
         if category != 'all':
             df = df[df['section'] == category].copy()
             if df.empty:
                 return jsonify({"error": f"სექციაში '{category}' პროდუქტები არ არის."})
 
-        # მონაცემების ტიპების გასწორება (დავამატეთ unit_weight)
         cols_to_fix = ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight']
         for col in cols_to_fix:
             if col in df.columns:
@@ -44,44 +42,36 @@ def calculate():
             else:
                 df[col] = 0.0
 
-        target_cal = clean_float(data.get('calories'))
         target_p = clean_float(data.get('protein'))
         target_c = clean_float(data.get('carbs'))
         target_f = clean_float(data.get('fat'))
+        target_cal = clean_float(data.get('calories'))
 
-        # ოპტიმიზაციის მიზანი: მინიმალური ფასი
         obj = (df['price'] / 10).tolist() 
 
-        # შეზღუდვების მატრიცები (A_ub და b_ub)
         A_ub = []
         b_ub = []
 
+        # მაკროების შეზღუდვები (±15% დიაპაზონი)
         if target_cal > 0:
-            # კალორიების დიაპაზონი (მიზნობრივი +- 10%)
-            A_ub.append(df['calories'].tolist())
-            b_ub.append(target_cal * 1.1)
-            A_ub.append((-df['calories']).tolist())
-            b_ub.append(-target_cal * 0.9)
+            A_ub.append(df['calories'].tolist()); b_ub.append(target_cal * 1.1)
+            A_ub.append((-df['calories']).tolist()); b_ub.append(-target_cal * 0.9)
         else:
-            # მაკროების დიაპაზონი (მიზნობრივი +- 15%, რათა "ამოხსნადი" იყოს)
-            # ცილა
-            A_ub.append(df['protein'].tolist())
-            b_ub.append(target_p * 1.15)
-            A_ub.append((-df['protein']).tolist())
-            b_ub.append(-target_p * 0.85)
-            # ნახშირწყალი
-            A_ub.append(df['carbs'].tolist())
-            b_ub.append(target_c * 1.15)
-            A_ub.append((-df['carbs']).tolist())
-            b_ub.append(-target_c * 0.85)
-            # ცხიმი
-            A_ub.append(df['fat'].tolist())
-            b_ub.append(target_f * 1.15)
-            A_ub.append((-df['fat']).tolist())
-            b_ub.append(-target_f * 0.85)
+            A_ub.append(df['protein'].tolist()); b_ub.append(target_p * 1.15)
+            A_ub.append((-df['protein']).tolist()); b_ub.append(-target_p * 0.85)
+            A_ub.append(df['carbs'].tolist()); b_ub.append(target_c * 1.15)
+            A_ub.append((-df['carbs']).tolist()); b_ub.append(-target_c * 0.85)
+            A_ub.append(df['fat'].tolist()); b_ub.append(target_f * 1.15)
+            A_ub.append((-df['fat']).tolist()); b_ub.append(-target_f * 0.85)
 
-        # ამოხსნა (ლიმიტი: თითო პროდუქტი მაქსიმუმ 1კგ, რომ მეტი არჩევანი ჰქონდეს)
-        res = linprog(c=obj, A_ub=A_ub, b_ub=b_ub, bounds=(0, 10), method='highs')
+        # მინიმუმ 200გ (2 ერთეული) და მაქსიმუმ 500გ (5 ერთეული)
+        # შენიშვნა: linprog ყოველთვის 0-დან იწყებს, ამიტომ ქვედა ზღვარს 
+        # შედეგების დამუშავებისას უფრო მკაცრად გავფილტრავთ.
+        res = linprog(c=obj, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5), method='highs')
+
+        if not res.success:
+            # თუ 500გ-იანი ლიმიტით ვერ იპოვა, ვზრდით ლიმიტს 1კგ-მდე (10 ერთეული)
+            res = linprog(c=obj, A_ub=A_ub, b_ub=b_ub, bounds=(0, 10), method='highs')
 
         if not res.success:
             return jsonify({"error": "ბიუჯეტური გეგმა ვერ შედგა. სცადეთ მაკროების შეცვლა."})
@@ -91,22 +81,24 @@ def calculate():
         totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
         for i, x in enumerate(res.x):
-            if x > 0.02: # თუ პროდუქტი მინიმუმ 2გ-ია
-                row = df.iloc[i]
-                grams = x * 100
+            # ფილტრი: მხოლოდ პროდუქტები, რომლებიც მინიმუმ 200 გრამია (x >= 2.0)
+            # გამონაკლისი: კვერცხი და ცალობითი პროდუქტები (შეიძლება 200გ-ზე ნაკლები იყოს)
+            grams = x * 100
+            row = df.iloc[i]
+            is_piece = row['pricing_type'] == 'piece'
+            
+            if grams >= 195 or (is_piece and grams > 10): 
                 unit_w = float(row['unit_weight'])
                 
-                if row['pricing_type'] == 'piece':
+                if is_piece:
                     cost = float(row['price'])
                     if unit_w > 0:
-                        # ვითვლით რამდენი ცალია საჭირო გრამების შესავსებად
                         count = round(grams / unit_w)
                         if count == 0: count = 1
-                        instr = f"იყიდე 1 შეკვრა (გამოიყენე {count} ცალი/პაკეტი)"
+                        instr = f"იყიდე 1 შეკვრა (გამოიყენე {count} ცალი)"
                     else:
                         instr = f"იყიდე 1 შეკვრა (გამოიყენე ~{round(grams)}გ)"
                 else:
-                    # წონითი პროდუქტებისთვის
                     cost = (float(row['price']) * grams) / 1000
                     instr = f"აწონე ~{round(grams)}გ"
 
@@ -121,6 +113,9 @@ def calculate():
                 totals['f'] += (row['fat'] * grams) / 100
                 totals['c'] += (row['carbs'] * grams) / 100
                 totals['cal'] += (row['calories'] * grams) / 100
+
+        if not final_items:
+            return jsonify({"error": "ვერ მოიძებნა პროდუქტები, რომლებიც 200-500გ ფარგლებში აკმაყოფილებენ მოთხოვნას."})
 
         return jsonify({
             "items": final_items,
