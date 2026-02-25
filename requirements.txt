@@ -1,5 +1,4 @@
-Flask
-pandas
-scipy
-numpy
-
+flask==3.0.0
+pandas==2.1.1
+scipy==1.11.3
+numpy==1.26.0
