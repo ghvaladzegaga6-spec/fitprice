@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import pandas as pd
 from scipy.optimize import linprog
 import os
@@ -9,13 +9,18 @@ app = Flask(__name__,
             template_folder=os.path.join(os.path.dirname(__file__), '..', 'templates'),
             static_folder=os.path.join(os.path.dirname(__file__), '..', 'static'))
 
+# --- კრიტიკული დამატება ფოტოების გამოსაჩენად ---
+@app.route('/static/<path:path>')
+def send_static(path):
+    return send_from_directory(app.static_folder, path)
+# --------------------------------------------
+
 def clean_float(val):
     try:
         return float(val) if val else 0.0
     except:
         return 0.0
 
-# დამატებული მთავარი გვერდის მარშრუტი
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -41,6 +46,7 @@ def calculate():
         t_f = clean_float(data.get('fat'))
         t_cal = clean_float(data.get('calories'))
 
+        # ხარჯების ოპტიმიზაცია (ფასი 100 გრამზე)
         costs = (df['price'] / 10).tolist() 
 
         A_ub = []
