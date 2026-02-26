@@ -1,20 +1,3 @@
-from flask import Flask, render_template, request, jsonify
-import pandas as pd
-from scipy.optimize import linprog
-import os
-
-app = Flask(__name__, template_folder='../templates')
-
-def clean_float(val):
-    try:
-        return float(val) if val else 0.0
-    except:
-        return 0.0
-
-@app.route('/')
-def index():
-    return render_template('index.html')
-
 @app.route('/calculate', methods=['POST'])
 def calculate():
     try:
@@ -29,29 +12,42 @@ def calculate():
         for col in ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight']:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
+        # მონაცემების წამოღება
         t_p = clean_float(data.get('protein'))
         t_c = clean_float(data.get('carbs'))
         t_f = clean_float(data.get('fat'))
+        t_cal = clean_float(data.get('calories'))
 
         # მიზანი: მინიმალური ფასი
         costs = (df['price'] / 1000).tolist()
 
-        # შეზღუდვები: უნდა იყოს მინიმუმ იმდენი, რამდენიც ითხოვე (>= Target)
         A_ub = []
         b_ub = []
+
+        # ლოგიკა 1: თუ მითითებულია მაკროები
         if t_p > 0: A_ub.append((-df['protein']).tolist()); b_ub.append(-t_p)
         if t_c > 0: A_ub.append((-df['carbs']).tolist()); b_ub.append(-t_c)
         if t_f > 0: A_ub.append((-df['fat']).tolist()); b_ub.append(-t_f)
 
-        # Bounds: [1.0, 3.0] ნიშნავს მინიმუმ 100გ და მაქსიმუმ 300გ-ს
-        # იმისათვის, რომ ალგორითმი არ გაიჭედოს, bounds-ს მივცემთ (0, 3.0) 
-        # და მინიმუმს კოდით ვაიძულებთ
+        # ლოგიკა 2: თუ მითითებულია კალორიები (მუშაობს მაკროების გარეშეც)
+        if t_cal > 0:
+            # მინიმუმ კალორიების 95%
+            A_ub.append((-df['calories']).tolist())
+            b_ub.append(-t_cal * 0.95)
+            # მაქსიმუმ კალორიების 105% (რომ ძალიან ბევრი არ მოგვივიდეს)
+            A_ub.append(df['calories'].tolist())
+            b_ub.append(t_cal * 1.05)
+
+        # თუ არაფერია მითითებული, ვაბრუნებთ შეცდომას
+        if not A_ub:
+            return jsonify({"error": "გთხოვთ მიუთითოთ კალორიები ან მაკროები"}), 400
+
+        # ოპტიმიზაცია
         res = linprog(c=costs, A_ub=A_ub, b_ub=b_ub, bounds=(0, 3.0), method='highs')
 
-        # თუ 300გ-ში ფიზიკურად ვერ ეტევა მოთხოვნილი მაკროები
         if not res.success:
             return jsonify({
-                "error": "მოთხოვნილი მაკროების შევსება 300გ-იან ლიმიტში შეუძლებელია. შეამცირეთ ციფრები ან დაამატეთ მეტი პროდუქტი."
+                "error": "მოთხოვნილი პარამეტრებით ბიუჯეტური ვარიანტი ვერ მოიძებნა. სცადეთ ციფრების შეცვლა."
             }), 400
 
         final_items = []
@@ -60,10 +56,9 @@ def calculate():
 
         for i, x in enumerate(res.x):
             grams = x * 100
-            if grams < 10: continue # უმნიშვნელო რაოდენობა
+            if grams < 10: continue 
             
             row = df.iloc[i]
-            # ვაიძულებთ მინიმუმ 100გ-ს, თუ პროდუქტი შერჩეულია
             if grams < 100: grams = 100
             if grams > 300: grams = 300
 
