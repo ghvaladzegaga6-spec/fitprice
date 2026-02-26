@@ -2,24 +2,18 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 import pandas as pd
 from scipy.optimize import linprog
 import os
-import math
 
-# სწორი ინიციალიზაცია Vercel-ისთვის
+# განვსაზღვროთ მთავარი საქაღალდე (Root), სადაც static და templates-ია
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 app = Flask(__name__, 
-            template_folder=os.path.join(os.path.dirname(__file__), '..', 'templates'),
-            static_folder=os.path.join(os.path.dirname(__file__), '..', 'static'))
+            template_folder=os.path.join(BASE_DIR, 'templates'),
+            static_folder=os.path.join(BASE_DIR, 'static'))
 
-# --- კრიტიკული დამატება ფოტოების გამოსაჩენად ---
-@app.route('/static/<path:path>')
-def send_static(path):
-    return send_from_directory(app.static_folder, path)
-# --------------------------------------------
-
-def clean_float(val):
-    try:
-        return float(val) if val else 0.0
-    except:
-        return 0.0
+# favicon-ის მოთხოვნაზე პასუხი, რომ ბრაუზერმა ძებნით არ დატვირთოს საიტი
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204
 
 @app.route('/')
 def index():
@@ -29,29 +23,28 @@ def index():
 def calculate():
     try:
         data = request.get_json()
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        csv_path = os.path.join(current_dir, '..', '2nabiji.csv')
+        # CSV ფაილი უნდა იყოს პროექტის მთავარ საქაღალდეში (Root)
+        csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
         
         if not os.path.exists(csv_path):
             return jsonify({"error": "მონაცემთა ბაზა (CSV) ვერ მოიძებნა"}), 404
 
         df = pd.read_csv(csv_path)
         
-        numeric_cols = ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight', 'total_package_weight']
+        # სვეტების გასუფთავება
+        numeric_cols = ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight']
         for col in numeric_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
         t_p = clean_float(data.get('protein'))
         t_c = clean_float(data.get('carbs'))
         t_f = clean_float(data.get('fat'))
         t_cal = clean_float(data.get('calories'))
 
-        # ხარჯების ოპტიმიზაცია (ფასი 100 გრამზე)
         costs = (df['price'] / 10).tolist() 
 
-        A_ub = []
-        b_ub = []
-
+        A_ub, b_ub = [], []
         if t_p > 0: A_ub.append((-df['protein']).tolist()); b_ub.append(-t_p)
         if t_c > 0: A_ub.append((-df['carbs']).tolist()); b_ub.append(-t_c)
         if t_f > 0: A_ub.append((-df['fat']).tolist()); b_ub.append(-t_f)
@@ -76,24 +69,22 @@ def calculate():
             if grams < 50: continue 
             
             row = df.iloc[i]
-            s_type = str(row['sale_type']).strip().lower()
-            u_w = float(row['unit_weight'])
+            s_type = str(row['sale_type']).strip().lower() if 'sale_type' in row else 'weight'
+            u_w = float(row.get('unit_weight', 0))
             
             display_text = ""
             final_grams_to_use = grams
             item_cost = 0
 
-            if s_type == 'package_pieces':
-                count = max(1, round(grams / u_w)) if u_w > 0 else 1
+            if s_type == 'package_pieces' and u_w > 0:
+                count = max(1, round(grams / u_w))
                 final_grams_to_use = count * u_w
                 item_cost = float(row['price'])
                 display_text = f"იყიდე 1 შეკვრა (გამოიყენე {count} ცალი)"
-            
             elif s_type == 'package_weight':
                 final_grams_to_use = grams
                 item_cost = float(row['price'])
                 display_text = f"იყიდე 1 შეკვრა (გამოიყენე ~{round(grams)}გ)"
-            
             else:
                 final_grams_to_use = max(100, grams)
                 item_cost = (float(row['price']) * final_grams_to_use) / 1000
@@ -119,3 +110,9 @@ def calculate():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+def clean_float(val):
+    try:
+        return float(val) if val else 0.0
+    except:
+        return 0.0
