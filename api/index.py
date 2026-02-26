@@ -1,3 +1,20 @@
+from flask import Flask, render_template, request, jsonify
+import pandas as pd
+from scipy.optimize import linprog
+import os
+
+app = Flask(__name__, template_folder='../templates')
+
+def clean_float(val):
+    try:
+        return float(val) if val else 0.0
+    except:
+        return 0.0
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
 @app.route('/calculate', methods=['POST'])
 def calculate():
     try:
@@ -9,7 +26,9 @@ def calculate():
             return jsonify({"error": "ბაზა ვერ მოიძებნა"}), 404
 
         df = pd.read_csv(csv_path)
-        for col in ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight']:
+        # ვასუფთავებთ სვეტებს
+        cols = ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight']
+        for col in cols:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
         # მონაცემების წამოღება
@@ -18,37 +37,31 @@ def calculate():
         t_f = clean_float(data.get('fat'))
         t_cal = clean_float(data.get('calories'))
 
-        # მიზანი: მინიმალური ფასი
         costs = (df['price'] / 1000).tolist()
 
         A_ub = []
         b_ub = []
 
-        # ლოგიკა 1: თუ მითითებულია მაკროები
+        # მაკროების შეზღუდვები
         if t_p > 0: A_ub.append((-df['protein']).tolist()); b_ub.append(-t_p)
         if t_c > 0: A_ub.append((-df['carbs']).tolist()); b_ub.append(-t_c)
         if t_f > 0: A_ub.append((-df['fat']).tolist()); b_ub.append(-t_f)
 
-        # ლოგიკა 2: თუ მითითებულია კალორიები (მუშაობს მაკროების გარეშეც)
+        # კალორიების შეზღუდვა (მხოლოდ თუ კალორიაა მითითებული)
         if t_cal > 0:
-            # მინიმუმ კალორიების 95%
             A_ub.append((-df['calories']).tolist())
             b_ub.append(-t_cal * 0.95)
-            # მაქსიმუმ კალორიების 105% (რომ ძალიან ბევრი არ მოგვივიდეს)
             A_ub.append(df['calories'].tolist())
             b_ub.append(t_cal * 1.05)
 
-        # თუ არაფერია მითითებული, ვაბრუნებთ შეცდომას
         if not A_ub:
-            return jsonify({"error": "გთხოვთ მიუთითოთ კალორიები ან მაკროები"}), 400
+            return jsonify({"error": "შეავსეთ კალორიების ან მაკროების ველი"}), 400
 
         # ოპტიმიზაცია
         res = linprog(c=costs, A_ub=A_ub, b_ub=b_ub, bounds=(0, 3.0), method='highs')
 
         if not res.success:
-            return jsonify({
-                "error": "მოთხოვნილი პარამეტრებით ბიუჯეტური ვარიანტი ვერ მოიძებნა. სცადეთ ციფრების შეცვლა."
-            }), 400
+            return jsonify({"error": "ვარიანტი ვერ მოიძებნა. შეცვალეთ ციფრები."}), 400
 
         final_items = []
         totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
@@ -62,13 +75,13 @@ def calculate():
             if grams < 100: grams = 100
             if grams > 300: grams = 300
 
-            unit_w = float(row['unit_weight'])
-            is_piece = row['pricing_type'] == 'piece'
+            # ვამოწმებთ unit_weight-ს რომ შეცდომა არ მოგვცეს
+            u_w = float(row.get('unit_weight', 0))
+            p_type = str(row.get('pricing_type', 'weight'))
 
-            if is_piece and unit_w > 0:
-                count = round(grams / unit_w)
-                if count == 0: count = 1
-                final_grams = count * unit_w
+            if p_type == 'piece' and u_w > 0:
+                count = max(1, round(grams / u_w))
+                final_grams = count * u_w
                 item_cost = float(row['price'])
                 instr = f"იყიდე 1 შეკვრა (გამოიყენე {count} ცალი)"
             else:
@@ -95,4 +108,6 @@ def calculate():
         })
 
     except Exception as e:
-        return jsonify({"error": f"სერვერის შეცდომა: {str(e)}"}), 500
+        # ეს დაგვეხმარება Vercel-ის ლოგებში შეცდომის დანახვაში
+        print(f"Error: {str(e)}")
+        return jsonify({"error": "სერვერის შიდა შეცდომა"}), 500
