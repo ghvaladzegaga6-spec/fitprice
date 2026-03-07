@@ -1,5 +1,9 @@
-product,protein,fat,carbs,calories,price,sale_type,unit_weight,total_package_weight
-სტაფილო,0.9,0.2,9.6,41,1.65,weight,0,0
-ქათმის ფილე (დაფას.),31.0,3.6,0.0,165,16.40,package_weight,0,1000
-კვერცხი (10ც),13.0,11.0,1.1,155,4.50,package_pieces,50,500
-ხაჭო (პაკეტი),18.0,0.5,3.0,90,4.20,package_weight,0,200
+product,protein,fat,carbs,calories,price,sale_type,unit_weight,total_package_weight,is_promo
+სტაფილო,0.9,0.2,9.6,41,1.65,weight,0,0,0
+ქათმის ფილე (დაფას.),31.0,3.6,0.0,165,16.40,package_weight,0,1000,0
+კვერცხი (10ც),13.0,11.0,1.1,155,4.50,package_pieces,50,500,0
+ხაჭო (პაკეტი),18.0,0.5,3.0,90,4.20,package_weight,0,200,0
+ავოკადო (პრომო),2.0,15.0,9.0,160,5.50,package_pieces,150,150,1
+ორაგულის სტეიკი (პრომო),20.0,13.0,0.0,200,12.00,package_weight,0,250,1
+პროტეინის ბატონი (პრომო),20.0,7.0,15.0,200,4.50,package_pieces,60,60,1
+კაკაო (პრომო),18.0,11.0,10.0,230,3.20,package_weight,0,100,1
