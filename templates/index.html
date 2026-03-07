@@ -3,151 +3,192 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FITPRICE - SMART DIET</title>
+    <title>FITPRICE - მიიღე მაქსიმალური შედეგი მინიმალურ ფასად</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        .input-disabled { background-color: #f1f5f9 !important; opacity: 0.6; cursor: not-allowed; }
+        body { font-family: 'Inter', sans-serif; background: #ffffff; }
+        .input-disabled { background-color: #f8fafc !important; cursor: not-allowed; opacity: 0.5; }
+        .fade-in { animation: fadeIn 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
         .banner-slide { display: none; }
-        .banner-slide.active { display: block; animation: fade 1s; }
-        @keyframes fade { from {opacity: 0.5} to {opacity: 1} }
+        .banner-slide.active { display: block; animation: fadeEffect 1s; }
+        @keyframes fadeEffect { from {opacity: 0.4} to {opacity: 1} }
     </style>
 </head>
-<body class="bg-white text-gray-900">
+<body class="antialiased text-gray-900">
 
-    <div id="promo-modal" class="hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-        <div class="bg-white rounded-[2rem] max-w-md w-full p-8 shadow-2xl">
-            <h3 class="text-xl font-black mb-4"> დღის შეთავაზება</h3>
-            <div id="promo-list" class="space-y-3 mb-6"></div>
-            <div class="flex gap-2">
-                <button onclick="closePromo(false)" class="flex-1 py-4 bg-gray-100 font-bold rounded-xl">გამოტოვება</button>
-                <button onclick="closePromo(true)" class="flex-1 py-4 bg-green-600 text-white font-bold rounded-xl">დამატება</button>
+    <div id="promo-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div class="bg-white rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl scale-in">
+            <h3 class="text-2xl font-black text-gray-800 mb-2"> სპეციალური შეთავაზება</h3>
+            <p class="text-gray-500 text-sm mb-6">გსურთ დაამატოთ ეს პროდუქტები თქვენს კალათაში?</p>
+            <div id="promo-list" class="space-y-3 mb-8"></div>
+            <div class="flex gap-3">
+                <button onclick="closePromo(false)" class="flex-1 py-4 bg-gray-100 text-gray-500 font-bold rounded-2xl">არა, მადლობა</button>
+                <button onclick="closePromo(true)" class="flex-1 py-4 bg-green-600 text-white font-black rounded-2xl shadow-lg">დამატება</button>
             </div>
         </div>
     </div>
 
-    <header class="p-6 border-b flex justify-between items-center sticky top-0 bg-white/80 backdrop-blur-md z-50">
-        <div class="flex items-center gap-2">
-            <div class="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center text-white font-black">F</div>
-            <span class="text-xl font-black">FITPRICE</span>
+    <header class="bg-white/80 backdrop-blur-md border-b border-gray-100 py-4 px-6 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <div class="w-9 h-9 bg-green-600 rounded-xl flex items-center justify-center text-white font-black italic shadow-lg">F</div>
+                <h1 class="text-2xl font-black tracking-tighter text-gray-800">FIT<span class="text-green-600">PRICE</span></h1>
+            </div>
+            <nav class="hidden md:flex items-center gap-8 text-sm font-bold text-gray-500">
+                <a href="#" class="hover:text-green-600 transition">მთავარი</a>
+                <a href="#" class="hover:text-green-600 transition">როგორ მუშაობს</a>
+                <a href="#" class="hover:text-green-600 transition">კონტაქტი</a>
+            </nav>
         </div>
     </header>
 
-    <section class="max-w-4xl mx-auto px-4 mt-6">
-        <div id="slider" class="h-40 rounded-3xl overflow-hidden bg-gray-100 relative">
-            <div class="banner-slide active h-full"><img src="/static/images/banner1.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x200?text=AD+1'"></div>
-            <div class="banner-slide h-full"><img src="/static/images/banner2.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x200?text=AD+2'"></div>
+    <section class="max-w-5xl mx-auto px-4 mt-8">
+        <div id="ad-slider" class="relative w-full h-48 md:h-64 rounded-[2.5rem] overflow-hidden shadow-2xl border border-gray-100 bg-gray-100">
+            <div class="banner-slide active h-full w-full"><img src="/static/images/banner1.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+AD+1'"></div>
+            <div class="banner-slide h-full w-full"><img src="/static/images/banner2.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+AD+2'"></div>
+            <div class="banner-slide h-full w-full"><img src="/static/images/banner3.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+AD+3'"></div>
+            <div class="banner-slide h-full w-full"><img src="/static/images/banner4.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+AD+4'"></div>
+            <div class="banner-slide h-full w-full"><img src="/static/images/banner5.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+AD+5'"></div>
         </div>
     </section>
 
-    <main class="max-w-3xl mx-auto px-4 py-10">
-        <div class="bg-white rounded-[2rem] p-8 border shadow-sm">
-            <form id="diet-form" class="space-y-6">
-                <div class="grid md:grid-cols-2 gap-4">
-                    <div class="flex flex-col gap-2">
-                        <label class="text-xs font-bold text-gray-400 uppercase">მაღაზია</label>
-                        <select class="p-4 bg-gray-50 rounded-xl border-0 font-bold">
-                            <option>ორი ნაბიჯი</option>
+    <main class="max-w-4xl mx-auto px-4 py-12">
+        <div class="bg-white shadow-[0_20px_50px_rgba(0,0,0,0.05)] rounded-[2.5rem] p-10 border border-gray-50 relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-2 h-full bg-green-500"></div>
+            <form id="diet-form" class="space-y-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="space-y-2">
+                        <label class="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">აირჩიეთ მაღაზია</label>
+                        <select name="category" class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 outline-none focus:border-green-500 transition font-bold text-gray-700">
+                            <option value="all">ორი ნაბიჯი (სრული სია)</option>
                         </select>
                     </div>
-                    <div class="flex flex-col gap-2">
-                        <label class="text-xs font-bold text-gray-400 uppercase">კალორია</label>
-                        <input type="number" name="calories" id="cal-input" class="p-4 bg-gray-50 rounded-xl border-0 font-bold focus:ring-2 ring-green-500">
+                    <div class="space-y-2">
+                        <label class="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">დღიური კალორიები</label>
+                        <input type="number" name="calories" id="cal-input" placeholder="მაგ: 2000" class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 outline-none focus:border-green-500 transition font-bold text-lg">
                     </div>
                 </div>
-                <div class="grid grid-cols-3 gap-3">
-                    <input type="number" name="protein" id="p-input" placeholder="ცილა" class="macro-input p-4 bg-blue-50/50 rounded-xl border-0 text-center font-bold text-blue-600">
-                    <input type="number" name="carbs" id="c-input" placeholder="ნახშირწ." class="macro-input p-4 bg-orange-50/50 rounded-xl border-0 text-center font-bold text-orange-600">
-                    <input type="number" name="fat" id="f-input" placeholder="ცხიმი" class="macro-input p-4 bg-red-50/50 rounded-xl border-0 text-center font-bold text-red-600">
+                <div class="grid grid-cols-3 gap-4">
+                    <div class="space-y-2 text-center">
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">ცილა (გ)</label>
+                        <input type="number" name="protein" id="p-input" placeholder="0" class="macro-input w-full bg-white border-2 border-gray-100 rounded-2xl py-4 text-center outline-none focus:border-blue-500 font-black text-blue-600 transition">
+                    </div>
+                    <div class="space-y-2 text-center">
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">ნახშირწ. (გ)</label>
+                        <input type="number" name="carbs" id="c-input" placeholder="0" class="macro-input w-full bg-white border-2 border-gray-100 rounded-2xl py-4 text-center outline-none focus:border-orange-500 font-black text-orange-600 transition">
+                    </div>
+                    <div class="space-y-2 text-center">
+                        <label class="text-[10px] font-black text-gray-400 uppercase tracking-widest">ცხიმი (გ)</label>
+                        <input type="number" name="fat" id="f-input" placeholder="0" class="macro-input w-full bg-white border-2 border-gray-100 rounded-2xl py-4 text-center outline-none focus:border-red-500 font-black text-red-600 transition">
+                    </div>
                 </div>
-                <button type="submit" id="submit-btn" class="w-full py-5 bg-green-600 text-white font-black rounded-2xl shadow-lg hover:bg-green-700 transition">გამოთვლა</button>
+                <button type="submit" id="submit-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-black py-5 rounded-2xl transition-all shadow-xl shadow-green-100 text-lg">საუკეთესო ალტერნატივის პოვნა</button>
             </form>
         </div>
 
-        <div id="result-container" class="hidden mt-10 space-y-6">
-            <div id="items-list" class="space-y-3"></div>
-            <div id="totals-display" class="grid grid-cols-4 gap-2"></div>
-            <div class="p-6 bg-black rounded-2xl flex justify-between items-center text-white">
-                <span class="font-bold opacity-60">ჯამური ფასი:</span>
-                <span id="total-price-display" class="text-2xl font-black">0.00₾</span>
+        <div id="result-container" class="hidden mt-12 fade-in">
+            <div class="bg-white rounded-[2.5rem] p-10 border border-gray-50 shadow-2xl">
+                <div id="items-list" class="space-y-4 mb-10"></div>
+                <div id="totals-display" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"></div>
+                <div class="p-6 bg-gray-900 rounded-[2rem] flex justify-between items-center shadow-2xl shadow-gray-200">
+                    <span class="text-gray-400 font-bold text-sm uppercase tracking-widest ml-4">ჯამური ღირებულება</span>
+                    <span class="text-white font-black text-3xl mr-4" id="total-price-display">0.00₾</span>
+                </div>
             </div>
         </div>
     </main>
 
     <script>
-        // სლაიდერი
-        let slideIdx = 0;
+        let currentSlide = 0;
         const slides = document.querySelectorAll('.banner-slide');
         setInterval(() => {
-            slides[slideIdx].classList.remove('active');
-            slideIdx = (slideIdx + 1) % slides.length;
-            slides[slideIdx].classList.add('active');
-        }, 8000);
+            if(slides.length > 0) {
+                slides[currentSlide].classList.remove('active');
+                currentSlide = (currentSlide + 1) % slides.length;
+                slides[currentSlide].classList.add('active');
+            }
+        }, 10000);
 
         const calInput = document.getElementById('cal-input');
         const macroInputs = document.querySelectorAll('.macro-input');
         const submitBtn = document.getElementById('submit-btn');
 
-        function toggleInputs() {
-            const hasCal = calInput.value !== "";
-            const hasMacro = Array.from(macroInputs).some(i => i.value !== "");
-            macroInputs.forEach(i => { i.disabled = hasCal; i.classList.toggle('input-disabled', hasCal); });
-            calInput.disabled = hasMacro; calInput.classList.toggle('input-disabled', hasMacro);
+        function toggleFields() {
+            const isCalFilled = calInput.value.length > 0;
+            const isAnyMacroFilled = Array.from(macroInputs).some(i => i.value.length > 0);
+            macroInputs.forEach(i => { i.disabled = isCalFilled; isCalFilled ? i.classList.add('input-disabled') : i.classList.remove('input-disabled'); });
+            calInput.disabled = isAnyMacroFilled; isAnyMacroFilled ? calInput.classList.add('input-disabled') : calInput.classList.remove('input-disabled');
         }
-        [calInput, ...macroInputs].forEach(el => el.addEventListener('input', toggleInputs));
+        calInput.addEventListener('input', toggleFields);
+        macroInputs.forEach(input => input.addEventListener('input', toggleFields));
 
         let currentPromos = [], selectedPromos = [];
 
         document.getElementById('diet-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             submitBtn.disabled = true;
+            submitBtn.innerText = "გთხოვთ დაელოდოთ...";
+
             try {
-                const res = await fetch('/get_promos');
-                currentPromos = await res.json();
-                if (currentPromos.length > 0) {
+                const pRes = await fetch('/get_promos');
+                currentPromos = await pRes.json();
+                
+                if (currentPromos && currentPromos.length > 0) {
                     document.getElementById('promo-list').innerHTML = currentPromos.map((p, i) => `
-                        <label class="flex items-center p-4 border rounded-xl cursor-pointer hover:bg-gray-50">
-                            <input type="checkbox" class="promo-check mr-3 w-5 h-5 accent-green-600" value="${i}">
-                            <div class="flex-1"><p class="font-bold text-sm uppercase">${p.product}</p><p class="text-xs text-gray-400">${p.price}₾</p></div>
+                        <label class="flex items-center p-4 border-2 border-gray-100 rounded-2xl cursor-pointer hover:border-green-500 transition">
+                            <input type="checkbox" class="promo-check w-5 h-5 accent-green-600 mr-4" value="${i}">
+                            <div class="flex-1"><p class="font-black text-gray-800 text-sm uppercase">${p.product}</p><p class="text-xs text-gray-500">ფასი: ${p.price}₾</p></div>
                         </label>`).join('');
                     document.getElementById('promo-modal').classList.remove('hidden');
-                } else { startCalc(); }
-            } catch { startCalc(); }
+                } else { 
+                    startCalculation(); 
+                }
+            } catch (err) {
+                console.error(err);
+                startCalculation(); 
+            }
         });
 
-        function closePromo(add) {
+        function closePromo(apply) {
             selectedPromos = [];
-            if (add) document.querySelectorAll('.promo-check:checked').forEach(c => selectedPromos.push(currentPromos[c.value]));
+            if (apply) document.querySelectorAll('.promo-check:checked').forEach(c => selectedPromos.push(currentPromos[c.value]));
             document.getElementById('promo-modal').classList.add('hidden');
-            startCalc();
+            startCalculation();
         }
 
-        async function startCalc() {
-            submitBtn.innerText = "ითვლება...";
-            const data = Object.fromEntries(new FormData(document.getElementById('diet-form')));
+        async function startCalculation() {
+            submitBtn.disabled = true; submitBtn.innerText = "ალგორითმი ითვლის...";
+            const formData = new FormData(document.getElementById('diet-form'));
+            const data = Object.fromEntries(formData.entries());
             data.selectedPromos = selectedPromos;
 
             try {
-                const r = await fetch('/calculate', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
-                const res = await r.json();
-                
-                document.getElementById('items-list').innerHTML = res.items.map(i => `
-                    <div class="p-5 bg-gray-50 rounded-2xl flex justify-between items-center border border-gray-100">
-                        <div><p class="font-black text-sm uppercase">${i.name}</p><p class="text-xs text-green-600 font-bold">${i.display}</p></div>
-                        <p class="font-black">${i.cost.toFixed(2)}₾</p>
+                const response = await fetch('/calculate', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+                const res = await response.json();
+                if(res.error) { alert(res.error); return; }
+
+                document.getElementById('items-list').innerHTML = res.items.map(item => `
+                    <div class="flex justify-between items-center p-6 bg-gray-50 rounded-3xl border border-transparent hover:border-green-100 transition-all">
+                        <div class="flex items-center gap-4">
+                            <div class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm font-bold text-xl">🥗</div>
+                            <div><p class="font-black text-gray-800 uppercase text-sm tracking-tight">${item.name}</p><p class="text-xs font-bold text-green-600">${item.display}</p></div>
+                        </div>
+                        <p class="font-black text-gray-900 text-lg">${item.cost.toFixed(2)}₾</p>
                     </div>`).join('');
 
                 document.getElementById('totals-display').innerHTML = `
-                    <div class="p-4 bg-gray-100 rounded-xl text-center"><p class="text-[9px] font-bold opacity-50">კალ</p><p class="font-black">${res.totals.cal}</p></div>
-                    <div class="p-4 bg-blue-50 rounded-xl text-center text-blue-600"><p class="text-[9px] font-bold opacity-50">ცილა</p><p class="font-black">${res.totals.p}გ</p></div>
-                    <div class="p-4 bg-orange-50 rounded-xl text-center text-orange-600"><p class="text-[9px] font-bold opacity-50">ნახშირწ</p><p class="font-black">${res.totals.c}გ</p></div>
-                    <div class="p-4 bg-red-50 rounded-xl text-center text-red-600"><p class="text-[9px] font-bold opacity-50">ცხიმი</p><p class="font-black">${res.totals.f}გ</p></div>`;
+                    <div class="bg-gray-50/50 p-5 rounded-3xl text-center border border-gray-100"><p class="text-[10px] font-black text-gray-400 uppercase mb-1">კალორია</p><p class="font-black text-gray-800 text-xl">${res.totals.cal}</p></div>
+                    <div class="bg-blue-50/50 p-5 rounded-3xl text-center border border-blue-100"><p class="text-[10px] font-black text-blue-400 uppercase mb-1">ცილა</p><p class="font-black text-blue-600 text-xl">${res.totals.p}გ</p></div>
+                    <div class="bg-orange-50/50 p-5 rounded-3xl text-center border border-orange-100"><p class="text-[10px] font-black text-orange-400 uppercase mb-1">ნახშირწ.</p><p class="font-black text-orange-600 text-xl">${res.totals.c}გ</p></div>
+                    <div class="bg-red-50/50 p-5 rounded-3xl text-center border border-red-100"><p class="text-[10px] font-black text-red-400 uppercase mb-1">ცხიმი</p><p class="font-black text-red-600 text-xl">${res.totals.f}გ</p></div>`;
 
                 document.getElementById('total-price-display').innerText = res.total_cost.toFixed(2) + "₾";
                 document.getElementById('result-container').classList.remove('hidden');
-            } catch { alert("შეცდომა კალკულაციისას"); }
-            finally { submitBtn.disabled = false; submitBtn.innerText = "გამოთვლა"; }
+                document.getElementById('result-container').scrollIntoView({ behavior: 'smooth' });
+            } catch (err) { alert("სერვერის შეცდომა"); }
+            finally { submitBtn.disabled = false; submitBtn.innerText = "საუკეთესო ალტერნატივის პოვნა"; }
         }
     </script>
 </body>
