@@ -8,14 +8,14 @@ import google.generativeai as genai
 # პროექტის ძირითადი მისამართის განსაზღვრა
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# --- GEMINI-ს კონფიგურაცია (უსაფრთხო ვერსია Vercel-ისთვის) ---
+# --- GEMINI-ს კონფიგურაცია ---
 api_key = os.environ.get("GEMINI_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
 else:
     model = None
-    print("გაფრთხილება: GEMINI_API_KEY ვერ მოიძებნა გარემო ცვლადებში!")
+    print("Warning: GEMINI_API_KEY not found in environment variables!")
 
 app = Flask(__name__, 
             template_folder=os.path.join(BASE_DIR, 'templates'),
@@ -25,15 +25,11 @@ def clean_float(val):
     try: return float(val) if val else 0.0
     except: return 0.0
 
-@app.route('/favicon.ico')
-def favicon():
-    return '', 204
-
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/get_promos', methods=['GET'])
+@app.route('/api/get_promos', methods=['GET'])
 def get_promos():
     try:
         csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
@@ -47,7 +43,7 @@ def get_promos():
     except Exception as e:
         return jsonify([])
 
-@app.route('/calculate', methods=['POST'])
+@app.route('/api/calculate', methods=['POST'])
 def calculate():
     try:
         data = request.get_json()
@@ -94,7 +90,7 @@ def calculate():
         rem_f = max(0, t_f - totals['f'])
         rem_cal = max(0, t_cal - totals['cal'])
 
-        # ოპტიმიზაცია ჩვეულებრივი პროდუქტებით
+        # ოპტიმიზაცია
         opt_df = df[df['is_promo'] == 0].reset_index(drop=True)
         if opt_df.empty: return jsonify({"error": "ბაზა ცარიელია"}), 400
 
@@ -148,14 +144,14 @@ def calculate():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/get_recipe', methods=['POST'])
+@app.route('/api/get_recipe', methods=['POST'])
 def get_recipe():
     if not model:
-        return jsonify({"error": "AI სისტემა არ არის კონფიგურირებული"}), 500
+        return jsonify({"error": "AI სისტემა არ არის კონფიგურირებული. შეამოწმე API KEY Vercel-ის Settings-ში."}), 500
     try:
         data = request.get_json()
         items = data.get('items', [])
-        items_str = ", ".join([f"{i['name']} ({i['display']})" for i in items])
+        items_str = ", ".join([f"{i['name']}" for i in items])
         
         prompt = f"""
         შენ ხარ ქართველი შეფ-მზარეული. მომხმარებელმა იყიდა ეს პროდუქტები: {items_str}.
@@ -167,5 +163,6 @@ def get_recipe():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Vercel-ისთვის ეს აუცილებელია
 if __name__ == '__main__':
     app.run(debug=True)
