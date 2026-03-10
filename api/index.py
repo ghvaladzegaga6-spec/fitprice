@@ -12,8 +12,8 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 api_key = os.environ.get("GEMINI_API_KEY")
 if api_key:
     genai.configure(api_key=api_key)
-    # ვიყენებთ მოდელის ზუსტ სახელს ყოველგვარი პრეფიქსის გარეშე
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # ვიყენებთ მოდელის სრულ სახელს
+    model = genai.GenerativeModel('models/gemini-1.5-flash')
 else:
     model = None
     print("Warning: GEMINI_API_KEY not found in environment variables!")
