@@ -14,7 +14,7 @@ model = genai.GenerativeModel('gemini-1.5-flash')
 
 app = Flask(__name__, 
             template_folder=os.path.join(BASE_DIR, 'templates'),
-            static_folder=os.path.join(BASE_DIR, 'static'))
+            static_folder=os.path.join(BASE_DIR, 'static'))ა
 
 def clean_float(val):
     try: return float(val) if val else 0.0
