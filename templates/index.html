@@ -92,10 +92,27 @@
             <div class="bg-white rounded-[2.5rem] p-10 border border-gray-50 shadow-2xl">
                 <div id="items-list" class="space-y-4 mb-10"></div>
                 <div id="totals-display" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"></div>
+                
                 <div class="p-6 bg-gray-900 rounded-[2rem] flex justify-between items-center shadow-2xl shadow-gray-200">
                     <span class="text-gray-400 font-bold text-sm uppercase tracking-widest ml-4">ჯამური ღირებულება</span>
                     <span class="text-white font-black text-3xl mr-4" id="total-price-display">0.00₾</span>
                 </div>
+
+                <div id="recipe-section" class="mt-8 hidden fade-in">
+                    <div class="p-8 bg-green-50 rounded-[2.5rem] border-2 border-green-100 relative overflow-hidden">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">👨‍🍳</span>
+                            <h4 class="font-black text-green-800 uppercase text-xs tracking-widest">AI მზარეულის რეცეპტი</h4>
+                        </div>
+                        <div id="recipe-content" class="text-gray-700 leading-relaxed font-medium whitespace-pre-wrap">
+                            მზადდება რეცეპტი...
+                        </div>
+                    </div>
+                </div>
+
+                <button id="recipe-btn" onclick="generateRecipe()" class="w-full mt-6 bg-white border-2 border-gray-100 hover:border-green-500 text-gray-600 font-black py-4 rounded-[1.5rem] transition-all flex items-center justify-center gap-2 shadow-sm">
+                    <span>✨</span> მოამზადე კერძი ამ პროდუქტებით
+                </button>
             </div>
         </div>
     </main>
@@ -132,7 +149,8 @@
             submitBtn.innerText = "გთხოვთ დაელოდოთ...";
 
             try {
-                const pRes = await fetch('/get_promos');
+                // Vercel-ისთვის ვიყენებთ /api/ პრეფიქსს
+                const pRes = await fetch('/api/get_promos');
                 currentPromos = await pRes.json();
                 
                 if (currentPromos && currentPromos.length > 0) {
@@ -165,15 +183,19 @@
             data.selectedPromos = selectedPromos;
 
             try {
-                const response = await fetch('/calculate', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+                const response = await fetch('/api/calculate', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify(data) 
+                });
                 const res = await response.json();
                 if(res.error) { alert(res.error); return; }
 
                 document.getElementById('items-list').innerHTML = res.items.map(item => `
-                    <div class="flex justify-between items-center p-6 bg-gray-50 rounded-3xl border border-transparent hover:border-green-100 transition-all">
+                    <div class="product-item flex justify-between items-center p-6 bg-gray-50 rounded-3xl border border-transparent hover:border-green-100 transition-all">
                         <div class="flex items-center gap-4">
                             <div class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm font-bold text-xl">🥗</div>
-                            <div><p class="font-black text-gray-800 uppercase text-sm tracking-tight">${item.name}</p><p class="text-xs font-bold text-green-600">${item.display}</p></div>
+                            <div><p class="product-name font-black text-gray-800 uppercase text-sm tracking-tight">${item.name}</p><p class="text-xs font-bold text-green-600">${item.display}</p></div>
                         </div>
                         <p class="font-black text-gray-900 text-lg">${item.cost.toFixed(2)}₾</p>
                     </div>`).join('');
@@ -186,9 +208,47 @@
 
                 document.getElementById('total-price-display').innerText = res.total_cost.toFixed(2) + "₾";
                 document.getElementById('result-container').classList.remove('hidden');
+                document.getElementById('recipe-section').classList.add('hidden'); // ახალი გათვლისას ვმალავთ ძველ რეცეპტს
                 document.getElementById('result-container').scrollIntoView({ behavior: 'smooth' });
             } catch (err) { alert("სერვერის შეცდომა"); }
             finally { submitBtn.disabled = false; submitBtn.innerText = "საუკეთესო ალტერნატივის პოვნა"; }
+        }
+
+        async function generateRecipe() {
+            const recipeBtn = document.getElementById('recipe-btn');
+            const recipeSection = document.getElementById('recipe-section');
+            const recipeContent = document.getElementById('recipe-content');
+            
+            // ვიღებთ პროდუქტების სახელებს სიიდან
+            const items = Array.from(document.querySelectorAll('.product-name')).map(p => ({ name: p.innerText }));
+
+            recipeBtn.disabled = true;
+            recipeBtn.innerText = "🪄 AI რეცეპტს გიმზადებს...";
+            recipeSection.classList.remove('hidden');
+            recipeContent.innerText = "მოითმინეთ, AI ფიქრობს საუკეთესო რეცეპტზე...";
+
+            try {
+                const response = await fetch('/api/get_recipe', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ items: items })
+                });
+                const res = await response.json();
+                
+                if(res.recipe) {
+                    recipeContent.innerText = res.recipe;
+                } else if(res.error) {
+                    recipeContent.innerText = "შეცდომა: " + res.error;
+                } else {
+                    recipeContent.innerText = "ბოდიში, რეცეპტის მომზადება ვერ მოხერხდა.";
+                }
+            } catch (err) {
+                recipeContent.innerText = "სერვერთან კავშირი გაწყდა.";
+            } finally {
+                recipeBtn.disabled = false;
+                recipeBtn.innerText = "✨ სხვა რეცეპტის გენერაცია";
+                recipeSection.scrollIntoView({ behavior: 'smooth' });
+            }
         }
     </script>
 </body>
