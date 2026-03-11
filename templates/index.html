@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FITPRICE - მიიღე მაქსიმალური შედეგი მინიმალურ ფასად</title>
+    <title>FITPRICE - მაქსიმალური შედეგი მინიმალურ ფასად</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap" rel="stylesheet">
     <style>
@@ -14,25 +14,18 @@
         .banner-slide { display: none; }
         .banner-slide.active { display: block; animation: fadeEffect 1s; }
         @keyframes fadeEffect { from {opacity: 0.4} to {opacity: 1} }
-        
-        /* კატეგორიების ჩამოსაშლელი სიის სტილები */
-        .category-chip { transition: all 0.2s; cursor: pointer; border: 2px solid #f8fafc; }
-        .category-chip.selected { background-color: #16a34a; color: white; border-color: #16a34a; transform: scale(1.05); }
-        #category-wrapper { transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1); overflow: hidden; }
-        .is-collapsed { max-height: 0; }
-        .is-expanded { max-height: 600px; }
     </style>
 </head>
 <body class="antialiased text-gray-900">
 
     <div id="promo-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
         <div class="bg-white rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl">
-            <h3 class="text-2xl font-black text-gray-800 mb-2">სპეციალური შეთავაზება</h3>
-            <p class="text-gray-500 text-sm mb-6">გსურთ დაამატოთ ეს პროდუქტები თქვენს კალათაში?</p>
+            <h3 class="text-2xl font-black text-gray-800 mb-2 text-green-600">სპეციალური შეთავაზება</h3>
+            <p class="text-gray-500 text-sm mb-6 font-medium">გსურთ დაამატოთ ეს პროდუქტები თქვენს კალათაში?</p>
             <div id="promo-list" class="space-y-3 mb-8"></div>
             <div class="flex gap-3">
-                <button onclick="closePromo(false)" class="flex-1 py-4 bg-gray-100 text-gray-500 font-bold rounded-2xl">არა, მადლობა</button>
-                <button onclick="closePromo(true)" class="flex-1 py-4 bg-green-600 text-white font-black rounded-2xl shadow-lg">დამატება</button>
+                <button onclick="closePromo(false)" class="flex-1 py-4 bg-gray-100 text-gray-500 font-bold rounded-2xl transition hover:bg-gray-200">არა</button>
+                <button onclick="closePromo(true)" class="flex-1 py-4 bg-green-600 text-white font-black rounded-2xl shadow-lg hover:bg-green-700 transition">დამატება</button>
             </div>
         </div>
     </div>
@@ -43,21 +36,13 @@
                 <div class="w-9 h-9 bg-green-600 rounded-xl flex items-center justify-center text-white font-black italic shadow-lg">F</div>
                 <h1 class="text-2xl font-black tracking-tighter text-gray-800">FIT<span class="text-green-600">PRICE</span></h1>
             </div>
-            <nav class="hidden md:flex items-center gap-8 text-sm font-bold text-gray-500">
-                <a href="#" class="hover:text-green-600 transition">მთავარი</a>
-                <a href="#" class="hover:text-green-600 transition">როგორ მუშაობს</a>
-                <a href="#" class="hover:text-green-600 transition">კონტაქტი</a>
-            </nav>
         </div>
     </header>
 
     <section class="max-w-5xl mx-auto px-4 mt-8">
-        <div id="ad-slider" class="relative w-full h-48 md:h-64 rounded-[2.5rem] overflow-hidden shadow-2xl border border-gray-100 bg-gray-100">
-            <div class="banner-slide active h-full w-full"><img src="/static/images/banner1.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+AD+1'"></div>
-            <div class="banner-slide h-full w-full"><img src="/static/images/banner2.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+AD+2'"></div>
-            <div class="banner-slide h-full w-full"><img src="/static/images/banner3.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+AD+3'"></div>
-            <div class="banner-slide h-full w-full"><img src="/static/images/banner4.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+AD+4'"></div>
-            <div class="banner-slide h-full w-full"><img src="/static/images/banner5.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+AD+5'"></div>
+        <div id="ad-slider" class="relative w-full h-48 md:h-64 rounded-[2.5rem] overflow-hidden shadow-2xl border border-gray-50 bg-gray-50">
+            <div class="banner-slide active h-full w-full"><img src="/static/images/banner1.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+1'"></div>
+            <div class="banner-slide h-full w-full"><img src="/static/images/banner2.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+2'"></div>
         </div>
     </section>
 
@@ -66,36 +51,14 @@
             <div class="absolute top-0 left-0 w-2 h-full bg-green-500"></div>
             
             <form id="diet-form" class="space-y-8">
-                
-                <div class="space-y-4">
-                    <div class="flex items-center justify-between">
-                        <label class="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">ფილტრაცია</label>
-                        <button type="button" onclick="toggleCategoryPanel()" id="toggle-btn" class="text-[11px] font-black text-green-600 uppercase tracking-widest hover:bg-green-50 px-3 py-1 rounded-lg transition-all">
-                            + სრული სია
-                        </button>
-                    </div>
-
-                    <div id="category-wrapper" class="is-collapsed">
-                        <div id="category-container" class="flex flex-wrap gap-2 py-4 border-b border-gray-50">
-                            </div>
-                        <div class="flex items-center gap-4 mt-3">
-                            <span class="text-[10px] font-black text-gray-300 uppercase">ფილტრის რეჟიმი:</span>
-                            <select id="filter-mode" class="text-[11px] font-bold text-gray-500 bg-gray-50 rounded-xl px-3 py-1.5 outline-none border border-gray-100">
-                                <option value="all">ყველა პროდუქტი</option>
-                                <option value="include">მხოლოდ მონიშნული</option>
-                                <option value="exclude">ყველა, გარდა მონიშნულისა</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="space-y-2">
-                        <label class="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">აირჩიეთ მაღაზია</label>
-                        <select class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 outline-none focus:border-green-500 transition font-bold text-gray-700">
-                            <option value="2nabiji">ორი ნაბიჯი (ავტომატური)</option>
+                        <label class="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">აირჩიეთ კატეგორია</label>
+                        <select id="category-select" name="category" class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 outline-none focus:border-green-500 transition font-bold text-gray-700">
+                            <option value="all">ყველა პროდუქტი</option>
                         </select>
                     </div>
+
                     <div class="space-y-2">
                         <label class="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">დღიური კალორიები</label>
                         <input type="number" name="calories" id="cal-input" placeholder="მაგ: 2000" class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 outline-none focus:border-green-500 transition font-bold text-lg">
@@ -132,25 +95,24 @@
 
                 <div id="recipe-section" class="mt-8 hidden fade-in">
                     <div class="p-8 bg-green-50 rounded-[2.5rem] border-2 border-green-100">
-                        <div class="flex items-center gap-3 mb-4">
-                            <span class="text-2xl">👨‍🍳</span>
-                            <h4 class="font-black text-green-800 uppercase text-xs tracking-widest">მზარეულის რეცეპტი</h4>
+                        <div class="flex items-center gap-3 mb-4 text-green-800 font-black uppercase text-xs">
+                            <span>👨‍🍳 მზარეულის რეცეპტი</span>
                         </div>
                         <div id="recipe-content" class="text-gray-700 leading-relaxed font-medium whitespace-pre-wrap"></div>
                     </div>
                 </div>
 
                 <button id="recipe-btn" onclick="generateRecipe()" class="w-full mt-6 bg-white border-2 border-gray-100 hover:border-green-500 text-gray-600 font-black py-4 rounded-[1.5rem] transition-all flex items-center justify-center gap-2 shadow-sm">
-                    <span>✨</span> მოამზადე კერძი ამ პროდუქტებით
+                    ✨ მოამზადე კერძი ამ პროდუქტებით
                 </button>
             </div>
         </div>
     </main>
 
     <script>
-        let selectedCategories = [], currentPromos = [], selectedPromos = [], lastResult = null;
+        let currentPromos = [], selectedPromos = [], lastResult = null;
 
-        // Banner Slider Logic
+        // Banner Logic
         let currentSlide = 0;
         const slides = document.querySelectorAll('.banner-slide');
         setInterval(() => {
@@ -161,40 +123,19 @@
             }
         }, 5000);
 
-        // კატეგორიების ჩამოშლა
-        function toggleCategoryPanel() {
-            const wrapper = document.getElementById('category-wrapper');
-            const btn = document.getElementById('toggle-btn');
-            if (wrapper.classList.contains('is-collapsed')) {
-                wrapper.classList.remove('is-collapsed');
-                wrapper.classList.add('is-expanded');
-                btn.innerText = "- დახურვა";
-            } else {
-                wrapper.classList.remove('is-expanded');
-                wrapper.classList.add('is-collapsed');
-                btn.innerText = "+ სრული სია";
-            }
-        }
-
+        // კატეგორიების ჩატვირთვა Python API-დან
         async function loadCategories() {
             try {
                 const res = await fetch('/api/get_categories');
                 const cats = await res.json();
-                document.getElementById('category-container').innerHTML = cats.map(cat => `
-                    <div onclick="toggleCategory('${cat}')" id="cat-${cat}" class="category-chip px-4 py-2 rounded-xl bg-white shadow-sm text-[11px] font-black text-gray-500 border border-gray-100">${cat}</div>
-                `).join('');
-            } catch (e) { console.error("Error loading categories", e); }
-        }
-
-        function toggleCategory(cat) {
-            const el = document.getElementById(`cat-${cat}`);
-            if(selectedCategories.includes(cat)) {
-                selectedCategories = selectedCategories.filter(c => c !== cat);
-                el.classList.remove('selected');
-            } else {
-                selectedCategories.push(cat);
-                el.classList.add('selected');
-            }
+                const select = document.getElementById('category-select');
+                cats.forEach(cat => {
+                    const opt = document.createElement('option');
+                    opt.value = cat;
+                    opt.innerText = cat;
+                    select.appendChild(opt);
+                });
+            } catch (e) { console.error("Error loading categories:", e); }
         }
 
         // ინპუტების ბლოკირება
@@ -209,28 +150,37 @@
         calInput.addEventListener('input', toggleFields);
         macroInputs.forEach(i => i.addEventListener('input', toggleFields));
 
-        // გათვლა და პრომოები
+        // გათვლის დაწყება (პრომოების შემოწმებით)
         document.getElementById('diet-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('submit-btn');
             btn.innerText = "ითვლება..."; btn.disabled = true;
+
             try {
                 const pRes = await fetch('/api/get_promos');
                 currentPromos = await pRes.json();
                 if(currentPromos.length > 0) {
                     document.getElementById('promo-list').innerHTML = currentPromos.map((p, i) => `
-                        <label class="flex items-center p-4 border rounded-2xl cursor-pointer hover:bg-green-50 transition">
+                        <label class="flex items-center p-4 border rounded-2xl cursor-pointer hover:bg-green-50 transition border-gray-100">
                             <input type="checkbox" class="promo-check w-5 h-5 accent-green-600 mr-4" value="${i}">
-                            <div class="flex-1 text-xs font-black uppercase tracking-tighter">${p.product} - <span class="text-green-600">${p.price}₾</span></div>
+                            <div class="flex-1 text-xs font-black uppercase tracking-tighter text-gray-700">
+                                ${p.product} - <span class="text-green-600">${p.price}₾</span>
+                            </div>
                         </label>`).join('');
                     document.getElementById('promo-modal').classList.remove('hidden');
-                } else { startCalculation(); }
+                } else {
+                    startCalculation();
+                }
             } catch { startCalculation(); }
         });
 
         function closePromo(apply) {
             selectedPromos = [];
-            if(apply) document.querySelectorAll('.promo-check:checked').forEach(c => selectedPromos.push(currentPromos[c.value]));
+            if(apply) {
+                document.querySelectorAll('.promo-check:checked').forEach(c => {
+                    selectedPromos.push(currentPromos[c.value]);
+                });
+            }
             document.getElementById('promo-modal').classList.add('hidden');
             startCalculation();
         }
@@ -238,33 +188,48 @@
         async function startCalculation() {
             const formData = new FormData(document.getElementById('diet-form'));
             const data = Object.fromEntries(formData.entries());
-            data.selectedCategories = selectedCategories;
-            data.filterMode = document.getElementById('filter-mode').value;
-            data.selectedPromos = selectedPromos;
+            
+            // სინქრონიზაცია Python-ის calculate() ფუნქციასთან
+            const catValue = document.getElementById('category-select').value;
+            const payload = {
+                calories: data.calories,
+                protein: data.protein,
+                carbs: data.carbs,
+                fat: data.fat,
+                selectedCategories: catValue === 'all' ? [] : [catValue],
+                filterMode: catValue === 'all' ? 'all' : 'include',
+                selectedPromos: selectedPromos
+            };
 
             const res = await fetch('/api/calculate', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
+                body: JSON.stringify(payload)
             });
             lastResult = await res.json();
             
-            document.getElementById('items-list').innerHTML = lastResult.items.map(item => `
-                <div class="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100">
-                    <div><p class="font-black text-xs uppercase">${item.name}</p><p class="text-[10px] font-bold text-green-600 uppercase italic">${item.display}</p></div>
-                    <p class="font-black text-lg">${item.cost.toFixed(2)}₾</p>
-                </div>`).join('');
+            if (lastResult.error) {
+                alert(lastResult.error);
+            } else {
+                document.getElementById('items-list').innerHTML = lastResult.items.map(item => `
+                    <div class="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                        <div><p class="font-black text-xs uppercase text-gray-800">${item.name}</p>
+                        <p class="text-[10px] font-bold text-green-600 uppercase italic">${item.display}</p></div>
+                        <p class="font-black text-lg text-gray-900">${item.cost.toFixed(2)}₾</p>
+                    </div>`).join('');
+                
+                document.getElementById('total-price-display').innerText = lastResult.total_cost.toFixed(2) + "₾";
+                document.getElementById('result-container').classList.remove('hidden');
+            }
             
-            document.getElementById('total-price-display').innerText = lastResult.total_cost.toFixed(2) + "₾";
-            document.getElementById('result-container').classList.remove('hidden');
-            document.getElementById('submit-btn').innerText = "საუკეთესო ალტერნატივის პოვნა";
-            document.getElementById('submit-btn').disabled = false;
+            const btn = document.getElementById('submit-btn');
+            btn.innerText = "საუკეთესო ალტერნატივის პოვნა";
+            btn.disabled = false;
         }
 
         async function generateRecipe() {
             const content = document.getElementById('recipe-content');
-            const section = document.getElementById('recipe-section');
-            section.classList.remove('hidden');
+            document.getElementById('recipe-section').classList.remove('hidden');
             content.innerText = "👨‍🍳 მზარეული ფიქრობს...";
             const res = await fetch('/api/get_recipe', {
                 method: 'POST',
