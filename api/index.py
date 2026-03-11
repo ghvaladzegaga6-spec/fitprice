@@ -3,6 +3,7 @@ import pandas as pd
 from scipy.optimize import linprog
 import os
 import json
+import random
 from openai import OpenAI
 
 # პროექტის ძირითადი საქაღალდე
@@ -15,6 +16,9 @@ app = Flask(__name__,
 # OpenAI client
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
+# ფაილის გზა (Excel-ის ვერსია)
+EXCEL_PATH = os.path.join(BASE_DIR, '2nabiji.xlsx')
+
 def clean_float(val):
     try: return float(val) if val else 0.0
     except: return 0.0
@@ -23,13 +27,12 @@ def clean_float(val):
 def index():
     return render_template('index.html')
 
-# Vercel-ისთვის აუცილებელია /api/ პრეფიქსი, თუ Frontend ასე ეძებს
 @app.route('/api/get_promos', methods=['GET'])
 def get_promos():
     try:
-        csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
-        if not os.path.exists(csv_path): return jsonify([])
-        df = pd.read_csv(csv_path)
+        if not os.path.exists(EXCEL_PATH): return jsonify([])
+        # ვიყენებთ read_excel-ს
+        df = pd.read_excel(EXCEL_PATH)
         promo_df = df[df['is_promo'] == 1]
         if promo_df.empty: return jsonify([])
         count = min(3, len(promo_df))
@@ -41,11 +44,10 @@ def get_promos():
 def calculate():
     try:
         data = request.get_json()
-        csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
-        if not os.path.exists(csv_path):
+        if not os.path.exists(EXCEL_PATH):
             return jsonify({"error": "მონაცემთა ბაზა ვერ მოიძებნა"}), 404
 
-        df = pd.read_csv(csv_path)
+        df = pd.read_excel(EXCEL_PATH)
         numeric_cols = ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight', 'total_package_weight']
         for col in numeric_cols:
             if col in df.columns:
@@ -57,7 +59,6 @@ def calculate():
         total_spending = 0
         totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
-        # პრომოების ლოგიკა
         selected_promos = data.get('selectedPromos', [])
         for promo in selected_promos:
             p_weight = clean_float(promo.get('unit_weight')) if promo.get('sale_type') == 'package_pieces' else clean_float(promo.get('total_package_weight'))
@@ -65,7 +66,7 @@ def calculate():
 
             final_items.append({
                 "name": f"⭐ {promo['product']}",
-                "display": "პრომო შეთავაზება",
+                "display": f"პრომო შეთავაზება ({p_weight}გ)",
                 "cost": clean_float(promo['price'])
             })
 
@@ -75,7 +76,6 @@ def calculate():
             totals['cal'] += (clean_float(promo['calories']) * p_weight) / 100
             total_spending += clean_float(promo['price'])
 
-        # ოპტიმიზაცია
         rem_p, rem_c, rem_f, rem_cal = max(0, t_p - totals['p']), max(0, t_c - totals['c']), max(0, t_f - totals['f']), max(0, t_cal - totals['cal'])
         opt_df = df[df['is_promo'] == 0].reset_index(drop=True)
         
@@ -123,8 +123,15 @@ def get_recipe():
         if not basket_items: 
             return jsonify({"error": "კალათა ცარიელია"}), 400
 
-        # პროდუქტების სია რაოდენობების (display) მითითებით
-        # ეს აიძულებს AI-ს დაინახოს, რომ მაგალითად 8 კვერცხი აქვს და არა 1.
+        # ბაზიდან ყველაზე იაფი პროდუქტების ამოღება AI-სთვის (სარეზერვო რჩევისთვის)
+        cheap_suggestions = "პური, ხახვი, კარტოფილი"
+        try:
+            if os.path.exists(EXCEL_PATH):
+                db_df = pd.read_excel(EXCEL_PATH)
+                cheap_list = db_df[db_df['is_promo'] == 0].nsmallest(5, 'price')
+                cheap_suggestions = ", ".join([f"{r['product']} ({r['price']}₾)" for _, r in cheap_list.iterrows()])
+        except: pass
+
         full_products_info = []
         for item in basket_items:
             name = item['name'].replace('⭐ ', '').strip()
@@ -134,9 +141,8 @@ def get_recipe():
         products_detailed_str = '\n'.join(full_products_info)
 
         system_prompt = (
-            "შენ ხარ პროფესიონალი ქართველი მზარეული, რომელიც სპეციალიზებულია ბიუჯეტურ კვებაზე. "
-            "საუბრობ მხოლოდ გამართული, აკადემიური და სტილისტურად დახვეწილი ქართულით. "
-            "ხარ კონკრეტული და არ იყენებ ზედმეტ, უაზრო ფრაზებს."
+            "შენ ხარ პროფესიონალი ქართველი მზარეული. პასუხობ მხოლოდ გამართული, აკადემიური ქართულით. "
+            "ხარ მაქსიმალურად კონკრეტული და ლაკონიური. არ გამოიყენო ზედმეტი შესავალი სიტყვები."
         )
 
         user_prompt = f"""მოცემული მაქვს პროდუქტების კალათა:
@@ -145,16 +151,16 @@ def get_recipe():
 კალათის ჯამური მაკროები: ცილა {basket_totals.get('p')}გ, კალორია {basket_totals.get('cal')}კკალ.
 
 შენი დავალება:
-1. მკაცრად დაიცავი რაოდენობები! თუ კალათაში წერია '8 ცალი', რეცეპტში გამოიყენე რვავე.
-2. თუ ინგრედიენტები იმდენად ღარიბია (მაგ: მხოლოდ 1 პროდუქტია), რომ რეცეპტი არ გამოდის:
-   - პირდაპირ თქვი: 'სამწუხაროდ, მხოლოდ ამ ინგრედიენტით სრულფასოვანი კერძი ვერ მომზადდება.'
-   - ურჩიე ყველაზე იაფი ალტერნატივა (მაგ: პური, კარტოფილი ან ხახვი), რაც კერძს შეკრავს.
-3. თუ რეცეპტი გამოდის, დაწერე შემდეგი სტრუქტურით:
+1. მკაცრად დაიცავი რაოდენობები! თუ კალათაში მითითებულია კონკრეტული რაოდენობა (მაგ: 8 ცალი), რეცეპტში გამოიყენე სრულად.
+2. თუ ინგრედიენტები იმდენად ღარიბია, რომ სრულფასოვანი რეცეპტი არ გამოდის:
+   - თქვი: 'სამწუხაროდ, მხოლოდ ამ ინგრედიენტით სრულფასოვანი კერძი ვერ მომზადდება.'
+   - შესთავაზე ყველაზე იაფი ალტერნატივა ამ სიიდან: {cheap_suggestions}.
+3. თუ რეცეპტი გამოდის, დაიცავი სტრუქტურა:
    - 🍳 [კერძის სახელი]
-   - 📝 მომზადება: [მაქსიმუმ 3-4 მარტივი ნაბიჯი]
-   - 💡 რჩევა: [როგორ გავხადოთ კერძი უფრო გემრიელი მინიმალური დანახარჯით]
+   - 📝 მომზადება: [მაქსიმუმ 3 მოკლე ნაბიჯი]
+   - 💡 რჩევა: [როგორ გავხადოთ უფრო გემრიელი მინიმალური დანახარჯით]
 
-დაწერე მოკლედ, გასაგებად და ზედმეტი შესავლების გარეშე."""
+არ ილაპარაკო ზედმეტი. დაწერე მხოლოდ რეცეპტი ან რჩევა."""
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -162,7 +168,7 @@ def get_recipe():
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            temperature=0.3  # დაბალი ტემპერატურა ნიშნავს მეტ სიზუსტეს და ნაკლებ იმპროვიზაციას
+            temperature=0.2 # მინიმალური ტემპერატურა მაქსიმალური სიზუსტისთვის
         )
 
         return jsonify({"recipe": response.choices[0].message.content.strip()})
