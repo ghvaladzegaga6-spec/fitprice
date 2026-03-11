@@ -120,20 +120,49 @@ def get_recipe():
         basket_items = data.get('items', [])
         basket_totals = data.get('totals', {})
 
-        if not basket_items: return jsonify({"error": "კალათა ცარიელია"}), 400
+        if not basket_items: 
+            return jsonify({"error": "კალათა ცარიელია"}), 400
 
-        products_str = ', '.join([item['name'].replace('⭐ ', '').strip() for item in basket_items])
+        # პროდუქტების სია რაოდენობების (display) მითითებით
+        # ეს აიძულებს AI-ს დაინახოს, რომ მაგალითად 8 კვერცხი აქვს და არა 1.
+        full_products_info = []
+        for item in basket_items:
+            name = item['name'].replace('⭐ ', '').strip()
+            qty = item.get('display', '')
+            full_products_info.append(f"- {name} ({qty})")
+        
+        products_detailed_str = '\n'.join(full_products_info)
 
-        # Prompt-ის გასწორება (რომ აღარ იბოდოს)
-        system_prompt = "შენ ხარ პროფესიონალი ქართველი მზარეული. პასუხობ მხოლოდ გამართული ქართულით, გარკვევით და მოკლედ. არ გამოიყენო უაზრო სიტყვები."
-        user_prompt = f"""მაქვს ეს პროდუქტები: {products_str}.
-        დაწერე რეალური ქართული რეცეპტი. თუ ინგრედიენტები არ გყოფნის, მირჩიე რა დავამატო ყველაზე იაფი.
-        მაკროები: ცილა {basket_totals.get('p')}გ, კალორია {basket_totals.get('cal')}."""
+        system_prompt = (
+            "შენ ხარ პროფესიონალი ქართველი მზარეული, რომელიც სპეციალიზებულია ბიუჯეტურ კვებაზე. "
+            "საუბრობ მხოლოდ გამართული, აკადემიური და სტილისტურად დახვეწილი ქართულით. "
+            "ხარ კონკრეტული და არ იყენებ ზედმეტ, უაზრო ფრაზებს."
+        )
+
+        user_prompt = f"""მოცემული მაქვს პროდუქტების კალათა:
+{products_detailed_str}
+
+კალათის ჯამური მაკროები: ცილა {basket_totals.get('p')}გ, კალორია {basket_totals.get('cal')}კკალ.
+
+შენი დავალება:
+1. მკაცრად დაიცავი რაოდენობები! თუ კალათაში წერია '8 ცალი', რეცეპტში გამოიყენე რვავე.
+2. თუ ინგრედიენტები იმდენად ღარიბია (მაგ: მხოლოდ 1 პროდუქტია), რომ რეცეპტი არ გამოდის:
+   - პირდაპირ თქვი: 'სამწუხაროდ, მხოლოდ ამ ინგრედიენტით სრულფასოვანი კერძი ვერ მომზადდება.'
+   - ურჩიე ყველაზე იაფი ალტერნატივა (მაგ: პური, კარტოფილი ან ხახვი), რაც კერძს შეკრავს.
+3. თუ რეცეპტი გამოდის, დაწერე შემდეგი სტრუქტურით:
+   - 🍳 [კერძის სახელი]
+   - 📝 მომზადება: [მაქსიმუმ 3-4 მარტივი ნაბიჯი]
+   - 💡 რჩევა: [როგორ გავხადოთ კერძი უფრო გემრიელი მინიმალური დანახარჯით]
+
+დაწერე მოკლედ, გასაგებად და ზედმეტი შესავლების გარეშე."""
 
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            temperature=0.5 # დაბალი ტემპერატურა ნიშნავს ნაკლებ "ბოდვას"
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.3  # დაბალი ტემპერატურა ნიშნავს მეტ სიზუსტეს და ნაკლებ იმპროვიზაციას
         )
 
         return jsonify({"recipe": response.choices[0].message.content.strip()})
