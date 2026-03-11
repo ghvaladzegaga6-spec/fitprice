@@ -2,3 +2,4 @@ flask
 pandas
 scipy
 openai
+openpyxl
