@@ -18,18 +18,6 @@
 </head>
 <body class="antialiased text-gray-900">
 
-    <div id="promo-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-        <div class="bg-white rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl">
-            <h3 class="text-2xl font-black text-gray-800 mb-2 text-green-600">სპეციალური შეთავაზება</h3>
-            <p class="text-gray-500 text-sm mb-6 font-medium">გსურთ დაამატოთ ეს პროდუქტები თქვენს კალათაში?</p>
-            <div id="promo-list" class="space-y-3 mb-8"></div>
-            <div class="flex gap-3">
-                <button onclick="closePromo(false)" class="flex-1 py-4 bg-gray-100 text-gray-500 font-bold rounded-2xl transition hover:bg-gray-200">არა</button>
-                <button onclick="closePromo(true)" class="flex-1 py-4 bg-green-600 text-white font-black rounded-2xl shadow-lg hover:bg-green-700 transition">დამატება</button>
-            </div>
-        </div>
-    </div>
-
     <header class="bg-white/80 backdrop-blur-md border-b border-gray-100 py-4 px-6 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto flex justify-between items-center">
             <div class="flex items-center gap-2">
@@ -38,13 +26,6 @@
             </div>
         </div>
     </header>
-
-    <section class="max-w-5xl mx-auto px-4 mt-8">
-        <div id="ad-slider" class="relative w-full h-48 md:h-64 rounded-[2.5rem] overflow-hidden shadow-2xl border border-gray-50 bg-gray-50">
-            <div class="banner-slide active h-full w-full"><img src="/static/images/banner1.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+1'"></div>
-            <div class="banner-slide h-full w-full"><img src="/static/images/banner2.jpg" class="w-full h-full object-cover" onerror="this.src='https://via.placeholder.com/800x400?text=FITPRICE+2'"></div>
-        </div>
-    </section>
 
     <main class="max-w-4xl mx-auto px-4 py-12">
         <div class="bg-white shadow-[0_20px_50px_rgba(0,0,0,0.05)] rounded-[2.5rem] p-10 border border-gray-50 relative overflow-hidden">
@@ -55,8 +36,8 @@
                     <div class="space-y-2">
                         <label class="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">აირჩიეთ კატეგორია</label>
                         <select id="category-select" name="category" class="w-full bg-gray-50 border-2 border-gray-100 rounded-2xl px-5 py-4 outline-none focus:border-green-500 transition font-bold text-gray-700">
-                            <option value="all">ყველა პროდუქტი</option>
-                        </select>
+                            <option value="all">ყველა კატეგორია (სრული სია)</option>
+                            </select>
                     </div>
 
                     <div class="space-y-2">
@@ -87,118 +68,61 @@
         <div id="result-container" class="hidden mt-12 fade-in">
             <div class="bg-white rounded-[2.5rem] p-10 border border-gray-50 shadow-2xl">
                 <div id="items-list" class="space-y-4 mb-10"></div>
-                
                 <div class="p-6 bg-gray-900 rounded-[2rem] flex justify-between items-center shadow-2xl shadow-gray-200">
                     <span class="text-gray-400 font-bold text-sm uppercase tracking-widest ml-4">ჯამური ღირებულება</span>
                     <span class="text-white font-black text-3xl mr-4" id="total-price-display">0.00₾</span>
                 </div>
-
-                <div id="recipe-section" class="mt-8 hidden fade-in">
-                    <div class="p-8 bg-green-50 rounded-[2.5rem] border-2 border-green-100">
-                        <div class="flex items-center gap-3 mb-4 text-green-800 font-black uppercase text-xs">
-                            <span>👨‍🍳 მზარეულის რეცეპტი</span>
-                        </div>
-                        <div id="recipe-content" class="text-gray-700 leading-relaxed font-medium whitespace-pre-wrap"></div>
-                    </div>
-                </div>
-
-                <button id="recipe-btn" onclick="generateRecipe()" class="w-full mt-6 bg-white border-2 border-gray-100 hover:border-green-500 text-gray-600 font-black py-4 rounded-[1.5rem] transition-all flex items-center justify-center gap-2 shadow-sm">
-                    ✨ მოამზადე კერძი ამ პროდუქტებით
-                </button>
             </div>
         </div>
     </main>
 
     <script>
-        let currentPromos = [], selectedPromos = [], lastResult = null;
+        // მნიშვნელოვანი: კატეგორიების ჩატვირთვის ფუნქცია
+        async function loadCategoriesFromServer() {
+            const selectEl = document.getElementById('category-select');
+            console.log("Loading categories..."); // დებაგისთვის
 
-        // Banner Logic
-        let currentSlide = 0;
-        const slides = document.querySelectorAll('.banner-slide');
-        setInterval(() => {
-            if(slides.length > 0) {
-                slides[currentSlide].classList.remove('active');
-                currentSlide = (currentSlide + 1) % slides.length;
-                slides[currentSlide].classList.add('active');
-            }
-        }, 5000);
-
-        // კატეგორიების ჩატვირთვა Python API-დან
-        async function loadCategories() {
             try {
-                const res = await fetch('/api/get_categories');
-                const cats = await res.json();
-                const select = document.getElementById('category-select');
-                cats.forEach(cat => {
-                    const opt = document.createElement('option');
-                    opt.value = cat;
-                    opt.innerText = cat;
-                    select.appendChild(opt);
-                });
-            } catch (e) { console.error("Error loading categories:", e); }
+                const response = await fetch('/api/get_categories');
+                const categories = await response.json();
+                
+                if (categories && categories.length > 0) {
+                    // ჯერ ვასუფთავებთ "all"-ის გარდა ყველაფერს
+                    selectEl.innerHTML = '<option value="all">ყველა კატეგორია (სრული სია)</option>';
+                    
+                    categories.forEach(cat => {
+                        const option = document.createElement('option');
+                        option.value = cat;
+                        option.textContent = cat;
+                        selectEl.appendChild(option);
+                    });
+                    console.log("Categories loaded successfully:", categories);
+                } else {
+                    console.warn("No categories found in Excel.");
+                }
+            } catch (error) {
+                console.error("Error fetching categories:", error);
+            }
         }
 
-        // ინპუტების ბლოკირება
-        const calInput = document.getElementById('cal-input');
-        const macroInputs = document.querySelectorAll('.macro-input');
-        function toggleFields() {
-            const isCal = calInput.value.length > 0;
-            const isMacro = Array.from(macroInputs).some(i => i.value.length > 0);
-            macroInputs.forEach(i => { i.disabled = isCal; i.classList.toggle('input-disabled', isCal); });
-            calInput.disabled = isMacro; calInput.classList.toggle('input-disabled', isMacro);
-        }
-        calInput.addEventListener('input', toggleFields);
-        macroInputs.forEach(i => i.addEventListener('input', toggleFields));
-
-        // გათვლის დაწყება (პრომოების შემოწმებით)
+        // ფორმის გაგზავნა
         document.getElementById('diet-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const btn = document.getElementById('submit-btn');
             btn.innerText = "ითვლება..."; btn.disabled = true;
 
-            try {
-                const pRes = await fetch('/api/get_promos');
-                currentPromos = await pRes.json();
-                if(currentPromos.length > 0) {
-                    document.getElementById('promo-list').innerHTML = currentPromos.map((p, i) => `
-                        <label class="flex items-center p-4 border rounded-2xl cursor-pointer hover:bg-green-50 transition border-gray-100">
-                            <input type="checkbox" class="promo-check w-5 h-5 accent-green-600 mr-4" value="${i}">
-                            <div class="flex-1 text-xs font-black uppercase tracking-tighter text-gray-700">
-                                ${p.product} - <span class="text-green-600">${p.price}₾</span>
-                            </div>
-                        </label>`).join('');
-                    document.getElementById('promo-modal').classList.remove('hidden');
-                } else {
-                    startCalculation();
-                }
-            } catch { startCalculation(); }
-        });
-
-        function closePromo(apply) {
-            selectedPromos = [];
-            if(apply) {
-                document.querySelectorAll('.promo-check:checked').forEach(c => {
-                    selectedPromos.push(currentPromos[c.value]);
-                });
-            }
-            document.getElementById('promo-modal').classList.add('hidden');
-            startCalculation();
-        }
-
-        async function startCalculation() {
-            const formData = new FormData(document.getElementById('diet-form'));
+            const formData = new FormData(e.target);
             const data = Object.fromEntries(formData.entries());
             
-            // სინქრონიზაცია Python-ის calculate() ფუნქციასთან
-            const catValue = document.getElementById('category-select').value;
+            // სინქრონიზაცია პითონის კოდთან
             const payload = {
-                calories: data.calories,
-                protein: data.protein,
-                carbs: data.carbs,
-                fat: data.fat,
-                selectedCategories: catValue === 'all' ? [] : [catValue],
-                filterMode: catValue === 'all' ? 'all' : 'include',
-                selectedPromos: selectedPromos
+                protein: data.protein || 0,
+                carbs: data.carbs || 0,
+                fat: data.fat || 0,
+                calories: data.calories || 0,
+                selectedCategories: data.category === 'all' ? [] : [data.category],
+                filterMode: data.category === 'all' ? 'all' : 'include',
+                selectedPromos: [] // თუ პრომოები გჭირდება, შეგიძლია აქ ჩაამატო
             };
 
             const res = await fetch('/api/calculate', {
@@ -206,41 +130,23 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
             });
-            lastResult = await res.json();
+            const result = await res.json();
             
-            if (lastResult.error) {
-                alert(lastResult.error);
-            } else {
-                document.getElementById('items-list').innerHTML = lastResult.items.map(item => `
-                    <div class="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100">
-                        <div><p class="font-black text-xs uppercase text-gray-800">${item.name}</p>
-                        <p class="text-[10px] font-bold text-green-600 uppercase italic">${item.display}</p></div>
-                        <p class="font-black text-lg text-gray-900">${item.cost.toFixed(2)}₾</p>
-                    </div>`).join('');
-                
-                document.getElementById('total-price-display').innerText = lastResult.total_cost.toFixed(2) + "₾";
-                document.getElementById('result-container').classList.remove('hidden');
-            }
+            // შედეგების გამოტანა
+            const itemsList = document.getElementById('items-list');
+            itemsList.innerHTML = result.items.map(item => `
+                <div class="flex justify-between items-center p-5 bg-gray-50 rounded-2xl border border-gray-100">
+                    <div><p class="font-black text-xs uppercase">${item.name}</p><p class="text-[10px] font-bold text-green-600 uppercase italic">${item.display}</p></div>
+                    <p class="font-black text-lg">${item.cost.toFixed(2)}₾</p>
+                </div>`).join('');
             
-            const btn = document.getElementById('submit-btn');
-            btn.innerText = "საუკეთესო ალტერნატივის პოვნა";
-            btn.disabled = false;
-        }
+            document.getElementById('total-price-display').innerText = result.total_cost.toFixed(2) + "₾";
+            document.getElementById('result-container').classList.remove('hidden');
+            btn.innerText = "საუკეთესო ალტერნატივის პოვნა"; btn.disabled = false;
+        });
 
-        async function generateRecipe() {
-            const content = document.getElementById('recipe-content');
-            document.getElementById('recipe-section').classList.remove('hidden');
-            content.innerText = "👨‍🍳 მზარეული ფიქრობს...";
-            const res = await fetch('/api/get_recipe', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ items: lastResult.items, totals: lastResult.totals })
-            });
-            const data = await res.json();
-            content.innerText = data.recipe || data.error;
-        }
-
-        window.onload = loadCategories;
+        // საიტი რომ ჩაიტვირთება, მაშინვე გამოიძახე კატეგორიები
+        window.addEventListener('DOMContentLoaded', loadCategoriesFromServer);
     </script>
 </body>
 </html>
