@@ -2,8 +2,7 @@ from flask import Flask, render_template, request, jsonify
 import pandas as pd
 from scipy.optimize import linprog
 import os
-import random
-from openai import OpenAI
+import openai
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -13,8 +12,9 @@ app = Flask(
     static_folder=os.path.join(BASE_DIR, 'static')
 )
 
-# OpenAI client
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# OPENAI KEY
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+
 
 def clean_float(val):
     try:
@@ -22,21 +22,26 @@ def clean_float(val):
     except:
         return 0.0
 
+
 @app.route('/favicon.ico')
 def favicon():
     return '', 204
+
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
 
-# =========================
+# =============================
 # PROMOS
-# =========================
+# =============================
+
 @app.route('/get_promos', methods=['GET'])
 def get_promos():
+
     try:
+
         csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
 
         if not os.path.exists(csv_path):
@@ -51,20 +56,24 @@ def get_promos():
 
         count = min(3, len(promo_df))
 
-        selected_promos = promo_df.sample(n=count).to_dict(orient='records')
+        promos = promo_df.sample(n=count).to_dict(orient='records')
 
-        return jsonify(selected_promos)
+        return jsonify(promos)
 
     except Exception as e:
-        print(e)
+
+        print("PROMO ERROR:", e)
+
         return jsonify([])
 
 
-# =========================
+# =============================
 # CALCULATOR
-# =========================
+# =============================
+
 @app.route('/calculate', methods=['POST'])
 def calculate():
+
     try:
 
         data = request.get_json()
@@ -87,8 +96,12 @@ def calculate():
         ]
 
         for col in numeric_cols:
+
             if col in df.columns:
+
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
+        # მომხმარებლის მიზნები
 
         t_p = clean_float(data.get('protein'))
         t_c = clean_float(data.get('carbs'))
@@ -98,11 +111,17 @@ def calculate():
         final_items = []
         total_spending = 0
 
-        totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
+        totals = {
+            'p': 0,
+            'f': 0,
+            'c': 0,
+            'cal': 0
+        }
 
-        # =====================
+        # =============================
         # PROMOS
-        # =====================
+        # =============================
+
         selected_promos = data.get('selectedPromos', [])
 
         for promo in selected_promos:
@@ -129,9 +148,9 @@ def calculate():
 
             total_spending += clean_float(promo['price'])
 
-        # =====================
+        # =============================
         # REMAINING MACROS
-        # =====================
+        # =============================
 
         rem_p = max(0, t_p - totals['p'])
         rem_c = max(0, t_c - totals['c'])
@@ -161,6 +180,7 @@ def calculate():
             b_ub.append(-rem_f)
 
         if t_cal > 0:
+
             A_ub.append((-opt_df['calories']).tolist())
             b_ub.append(-rem_cal * 0.95)
 
@@ -238,72 +258,69 @@ def calculate():
         })
 
     except Exception as e:
+
+        print("CALCULATE ERROR:", e)
+
         return jsonify({"error": str(e)}), 500
 
 
-# =========================
-# AI RECIPE GENERATOR
-# =========================
+# =============================
+# AI RECIPE
+# =============================
+
 @app.route('/generate_recipe', methods=['POST'])
 def generate_recipe():
+
     try:
 
         data = request.get_json()
 
         basket = data.get("items", [])
 
+        basket_names = [i["name"] for i in basket]
+
         csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
 
         df = pd.read_csv(csv_path)
 
-        basket_names = [i["name"] for i in basket]
+        cheapest = df.sort_values("price").head(5)
 
-        cheapest_products = df.sort_values("price").head(5)
-
-        cheap_list = cheapest_products[["product", "price"]].to_dict(orient="records")
+        cheap_products = cheapest[['product', 'price']].to_dict(orient="records")
 
         prompt = f"""
-მომხმარებელს აქვს ეს პროდუქტები:
+მომხმარებლის კალათაში არის:
 
 {basket_names}
 
 დაწერე ძალიან მოკლე რეცეპტი მხოლოდ ამ პროდუქტებით.
 
-თუ შეუძლებელია რეცეპტი, შესთავაზე ყველაზე იაფი ინგრედიენტები ამ სიიდან:
+თუ შეუძლებელია კერძი, შესთავაზე ყველაზე იაფი დამატებითი პროდუქტები:
 
-{cheap_list}
+{cheap_products}
 
 უპასუხე ქართულად.
-ფორმატი:
-
-რეცეპტი:
-...
-
-თუ ინგრედიენტი აკლია:
-
-დამატე:
-პროდუქტი - ფასი
 """
 
-        completion = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "შენ ხარ კულინარიული ასისტენტი."},
+                {"role": "system", "content": "შენ ხარ კულინარიული ასისტენტი"},
                 {"role": "user", "content": prompt}
             ]
         )
 
-        recipe = completion.choices[0].message.content
+        recipe = response["choices"][0]["message"]["content"]
 
-        return jsonify({
-            "recipe": recipe
-        })
+        return jsonify({"recipe": recipe})
 
     except Exception as e:
 
+        print("AI ERROR:", e)
+
         return jsonify({
-            "error": str(e)
-        })
+            "error": "AI recipe ვერ შეიქმნა",
+            "details": str(e)
+        }), 500
 
 
 if __name__ == '__main__':
