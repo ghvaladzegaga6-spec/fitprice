@@ -102,7 +102,7 @@
                     <div class="p-8 bg-green-50 rounded-[2.5rem] border-2 border-green-100 relative overflow-hidden">
                         <div class="flex items-center gap-3 mb-4">
                             <span class="text-2xl">👨‍🍳</span>
-                            <h4 class="font-black text-green-800 uppercase text-xs tracking-widest">AI მზარეულის რეცეპტი</h4>
+                            <h4 class="font-black text-green-800 uppercase text-xs tracking-widest">მზარეულის რეცეპტი</h4>
                         </div>
                         <div id="recipe-content" class="text-gray-700 leading-relaxed font-medium whitespace-pre-wrap">
                             მზადდება რეცეპტი...
@@ -246,7 +246,7 @@
                 recipeContent.innerText = "სერვერთან კავშირი გაწყდა.";
             } finally {
                 recipeBtn.disabled = false;
-                recipeBtn.innerText = "✨ სხვა რეცეპტის გენერაცია";
+                recipeBtn.innerText = "";
                 recipeSection.scrollIntoView({ behavior: 'smooth' });
             }
         }
