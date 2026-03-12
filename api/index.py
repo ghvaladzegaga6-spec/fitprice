@@ -1,135 +1,146 @@
-from flask import Flask, render_template, request, jsonify
-import pandas as pd
-from scipy.optimize import linprog
 import os
-import csv
+import random
+import pandas as pd
+from flask import Flask, render_template, request, jsonify
+from scipy.optimize import linprog
 from openai import OpenAI
 
-# გზების განსაზღვრა
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-BASE_DIR = os.path.dirname(CURRENT_DIR)
-FILE_PATH = os.path.join(BASE_DIR, '2nabiji.xlsx')
+# API Key აღებულია Vercel-ის Environment Variables-დან
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 app = Flask(__name__, 
             template_folder=os.path.join(BASE_DIR, 'templates'),
             static_folder=os.path.join(BASE_DIR, 'static'))
 
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-
-def load_data():
-    if not os.path.exists(FILE_PATH):
-        return None
-    try:
-        # სპეციალური პარამეტრები შენი CSV-სთვის: 
-        # მძიმე გამყოფი, UTF-8 ენკოდინგი და ბრჭყალების იგნორირება
-        df = pd.read_csv(FILE_PATH, 
-                         encoding='utf-8', 
-                         sep=',', 
-                         quotechar='"', 
-                         doublequote=True, 
-                         on_bad_lines='skip')
-        
-        df.columns = df.columns.str.strip().str.lower()
-        return df
-    except Exception as e:
-        print(f"Read Error: {e}")
-        return None
+def clean_float(val):
+    try: return float(val) if val else 0.0
+    except: return 0.0
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/api/get_categories', methods=['GET'])
+@app.route('/get_categories', methods=['GET'])
 def get_categories():
-    df = load_data()
-    if df is not None and 'category' in df.columns:
-        # სუფთა კატეგორიების სია
-        categories = sorted([str(c).strip() for c in df['category'].dropna().unique() if str(c).strip()])
+    try:
+        csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
+        df = pd.read_csv(csv_path)
+        categories = df['category'].unique().tolist()
         return jsonify(categories)
-    return jsonify([])
+    except:
+        return jsonify([])
 
-@app.route('/api/calculate', methods=['POST'])
+@app.route('/get_promos', methods=['GET'])
+def get_promos():
+    try:
+        csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
+        if not os.path.exists(csv_path): return jsonify([])
+        df = pd.read_csv(csv_path)
+        promo_df = df[df['is_promo'] == 1]
+        if promo_df.empty: return jsonify([])
+        count = min(3, len(promo_df))
+        return jsonify(promo_df.sample(n=count).to_dict(orient='records'))
+    except:
+        return jsonify([])
+
+@app.route('/calculate', methods=['POST'])
 def calculate():
     try:
         data = request.get_json()
-        df = load_data()
-        if df is None: return jsonify({"error": "ფაილი ვერ მოიძებნა"}), 404
-
-        # მონაცემების ტიპების გასწორება (ციფრებად ქცევა)
-        for col in ['protein', 'fat', 'carbs', 'calories', 'price', 'is_promo']:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-
-        # კატეგორიების ფილტრი
-        sel_cats = data.get('selectedCategories', [])
-        if sel_cats:
-            mode = data.get('filterMode', 'include')
-            if mode == 'include':
-                df = df[df['category'].astype(str).str.strip().isin(sel_cats)]
+        csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
+        df = pd.read_csv(csv_path)
+        
+        # დინამიკური ფილტრაცია
+        selected_cats = data.get('categories', [])
+        filter_mode = data.get('filterMode', 'include') # 'include' ან 'exclude'
+        
+        if selected_cats:
+            if filter_mode == 'include':
+                df = df[df['category'].isin(selected_cats)]
             else:
-                df = df[~df['category'].astype(str).str.strip().isin(sel_cats)]
+                df = df[~df['category'].isin(selected_cats)]
 
-        target_p = float(data.get('protein', 0))
-        target_cal = float(data.get('calories', 0))
+        numeric_cols = ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
+        t_p, t_c, t_f, t_cal = [clean_float(data.get(k)) for k in ['protein', 'carbs', 'fat', 'calories']]
         
-        # ოპტიმიზაცია - მხოლოდ ის პროდუქტები, სადაც is_promo არის 0
-        opt_df = df[df['is_promo'] == 0].reset_index(drop=True)
-        
-        final_items = []
-        total_cost = 0
+        final_items, total_spending = [], 0
         totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
-        if not opt_df.empty and (target_p > 0 or target_cal > 0):
-            costs = (opt_df['price'] / 10).tolist() # ფასი 100გ-ზე
-            A_ub, b_ub = [], []
-            
-            if target_p > 0:
-                A_ub.append((-opt_df['protein']).tolist()); b_ub.append(-target_p)
-            
-            if target_cal > 0:
-                # კალორიების დიაპაზონი +/- 5%
-                A_ub.append((-opt_df['calories']).tolist()); b_ub.append(-target_cal * 0.95)
-                A_ub.append(opt_df['calories'].tolist()); b_ub.append(target_cal * 1.05)
+        # პრომოების დამუშავება
+        for promo in data.get('selectedPromos', []):
+            p_weight = clean_float(promo.get('unit_weight')) or 100
+            final_items.append({"name": f"⭐ {promo['product']}", "display": "პრომო შეთავაზება", "cost": clean_float(promo['price'])})
+            for k, m in zip(['p','f','c','cal'], ['protein','fat','carbs','calories']):
+                totals[k] += (clean_float(promo[m]) * p_weight) / 100
+            total_spending += clean_float(promo['price'])
 
-            # Bounds (0, 5) ნიშნავს 0-დან 500 გრამამდე თითო პროდუქტზე
-            res = linprog(c=costs, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5), method='highs')
-            
+        rem_p, rem_c, rem_f, rem_cal = max(0, t_p-totals['p']), max(0, t_c-totals['c']), max(0, t_f-totals['f']), max(0, t_cal-totals['cal'])
+
+        opt_df = df[df['is_promo'] == 0].reset_index(drop=True)
+        costs = (opt_df['price'] / 10).tolist()
+        A_ub, b_ub = [], []
+        if t_p > 0: A_ub.append((-opt_df['protein']).tolist()); b_ub.append(-rem_p)
+        if t_c > 0: A_ub.append((-opt_df['carbs']).tolist()); b_ub.append(-rem_c)
+        if t_f > 0: A_ub.append((-opt_df['fat']).tolist()); b_ub.append(-rem_f)
+        if t_cal > 0:
+            A_ub.append((-opt_df['calories']).tolist()); b_ub.append(-rem_cal * 0.95)
+            A_ub.append(opt_df['calories'].tolist()); b_ub.append(rem_cal * 1.05)
+
+        if A_ub:
+            res = linprog(c=costs, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5.0), method='highs')
             if res.success:
                 for i, x in enumerate(res.x):
                     grams = x * 100
-                    if grams < 45: continue
+                    if grams < 50: continue
                     row = opt_df.iloc[i]
-                    cost = (row['price'] * grams) / 1000
+                    u_w, s_type = float(row['unit_weight']), str(row['sale_type']).strip().lower()
                     
-                    final_items.append({
-                        "name": row['product'],
-                        "display": f"~{round(grams)}გ",
-                        "cost": round(cost, 2)
-                    })
-                    total_cost += cost
-                    totals['p'] += (row['protein'] * grams) / 100
-                    totals['cal'] += (row['calories'] * grams) / 100
+                    if s_type == 'package_pieces' and u_w > 0:
+                        count = max(1, round(grams / u_w))
+                        f_grams, cost, txt = count * u_w, float(row['price']), f"იყიდე 1 შეკვრა (გამოიყენე {count} ცალი)"
+                    elif s_type == 'package_weight':
+                        f_grams, cost, txt = grams, float(row['price']), f"იყიდე 1 შეკვრა (გამოიყენე ~{round(grams)}გ)"
+                    else:
+                        f_grams = max(100, grams)
+                        cost, txt = (float(row['price']) * f_grams) / 1000, f"აწონე ~{round(f_grams)}გ"
 
-        return jsonify({
-            "items": final_items,
-            "total_cost": round(total_cost, 2),
-            "totals": {k: round(v, 1) for k, v in totals.items()}
-        })
+                    final_items.append({"name": row['product'], "display": txt, "cost": round(cost, 2), "grams": round(f_grams)})
+                    for k, m in zip(['p','f','c','cal'], ['protein','fat','carbs','calories']):
+                        totals[k] += (row[m] * f_grams) / 100
+                    total_spending += cost
+            else:
+                return jsonify({"error": "ვარიანტი ვერ მოიძებნა. სცადეთ სხვა ციფრები."}), 400
+
+        return jsonify({"items": final_items, "total_cost": round(total_spending, 2), "totals": {k: round(v, 1) for k, v in totals.items()}})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/get_recipe', methods=['POST'])
-def get_recipe():
-    try:
-        data = request.get_json()
-        p_list = ", ".join([i['name'] for i in data.get('items', [])])
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": f"მომიმზადე რეცეპტი ამათგან: {p_list}"}]
-        )
-        return jsonify({"recipe": response.choices[0].message.content})
-    except:
-        return jsonify({"error": "AI შეცდომა"})
+@app.route('/generate_recipe', methods=['POST'])
+def generate_recipe():
+    data = request.get_json()
+    items = data.get('items', [])
+    
+    if len(items) < 3:
+        # იაფიანი ალტერნატივის მოძიება იმავე ბაზიდან
+        csv_path = os.path.join(BASE_DIR, '2nabiji.csv')
+        df = pd.read_csv(csv_path)
+        cheapest = df.sort_values(by='price').head(3)['product'].tolist()
+        return jsonify({"recipe": f"კალათაში მხოლოდ {len(items)} პროდუქტია, რაც საკმარისი არ არის რეცეპტისთვის. გირჩევთ დაამატოთ ხელმისაწვდომი ალტერნატივები: {', '.join(cheapest)}."})
+
+    prompt = f"შექმენი მოკლე რეცეპტი შემდეგი ინგრედიენტებით: {', '.join([f'{i.get('name')} ({i.get('display')})' for i in items])}. დაიცავი გრამატიკა. იყავი კონკრეტული რაოდენობებში."
+    
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "system", "content": "შენ ხარ კულინარიული ასისტენტი. წერ გამართული ქართულით."},
+                  {"role": "user", "content": prompt}]
+    )
+    return jsonify({"recipe": response.choices[0].message.content})
 
 if __name__ == '__main__':
     app.run(debug=True)
