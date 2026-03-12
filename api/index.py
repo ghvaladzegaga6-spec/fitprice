@@ -7,7 +7,7 @@ from openai import OpenAI
 # გზების განსაზღვრა
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(CURRENT_DIR)
-# ფაილის სახელი ზუსტად ისე, როგორც შენს საქაღალდეშია
+# ფაილის სახელი (Vercel-ზე და ლოკალურად)
 FILE_PATH = os.path.join(BASE_DIR, '2nabiji.xlsx')
 
 app = Flask(__name__, 
@@ -16,23 +16,26 @@ app = Flask(__name__,
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-def load_my_data():
+def load_data():
     if not os.path.exists(FILE_PATH):
         return None
     try:
-        # ვკითხულობთ როგორც CSV, რადგან სურათზე აშკარად CSV სტრუქტურაა
-        # encoding='utf-8' მნიშვნელოვანია ქართული ასოებისთვის
-        df = pd.read_csv(FILE_PATH, encoding='utf-8', on_bad_lines='skip')
+        # ვკითხულობთ როგორც CSV (რადგან ფაილი რეალურად CSV-ა)
+        # encoding='utf-8' კრიტიკულია ქართული ასოებისთვის
+        df = pd.read_csv(FILE_PATH, encoding='utf-8', sep=',')
         
-        # თუ მძიმით ვერ დაშალა და ყველაფერი ერთ სვეტშია
-        if len(df.columns) <= 1:
-            df = pd.read_csv(FILE_PATH, sep=',', encoding='utf-8')
-            
+        # ვასუფთავებთ სვეტების სახელებს
         df.columns = df.columns.str.strip().str.lower()
         return df
     except Exception as e:
-        print(f"Error: {e}")
-        return None
+        try:
+            # თუ UTF-8-მა არ იმუშავა, ვცადოთ excel-ის ფორმატი
+            df = pd.read_excel(FILE_PATH)
+            df.columns = df.columns.str.strip().str.lower()
+            return df
+        except:
+            print(f"Error loading file: {e}")
+            return None
 
 @app.route('/')
 def index():
@@ -40,26 +43,28 @@ def index():
 
 @app.route('/api/get_categories', methods=['GET'])
 def get_categories():
-    df = load_my_data()
+    df = load_data()
     if df is not None and 'category' in df.columns:
-        # ვიღებთ უნიკალურ მნიშვნელობებს და ვფილტრავთ ცარიელებს
-        cats = df['category'].dropna().unique().tolist()
-        return jsonify([str(c).strip() for c in cats if str(c).strip()])
-    return jsonify(["ბაზა ვერ იკითხება"])
+        # ვიღებთ უნიკალურ კატეგორიებს და ვაშორებთ ცარიელებს
+        categories = df['category'].dropna().unique().tolist()
+        return jsonify([str(c).strip() for c in categories if str(c).strip()])
+    return jsonify([])
 
 @app.route('/api/calculate', methods=['POST'])
 def calculate():
     try:
         data = request.get_json()
-        df = load_my_data()
-        if df is None: return jsonify({"error": "ვერ მოიძებნა ფაილი"}), 404
+        df = load_data()
+        if df is None:
+            return jsonify({"error": "მონაცემთა ბაზა ვერ მოიძებნა"}), 404
 
-        # რიცხვითი მონაცემების გასწორება
-        for col in ['protein', 'fat', 'carbs', 'calories', 'price']:
+        # რიცხვითი მონაცემების ფორმატირება
+        cols = ['protein', 'fat', 'carbs', 'calories', 'price', 'is_promo']
+        for col in cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-        # ფილტრაცია
+        # ფილტრაცია კატეგორიებით
         sel_cats = data.get('selectedCategories', [])
         if sel_cats:
             mode = data.get('filterMode', 'include')
@@ -71,13 +76,15 @@ def calculate():
         t_p = float(data.get('protein', 0))
         t_cal = float(data.get('calories', 0))
         
+        # ოპტიმიზაცია (მხოლოდ არა-პრომო პროდუქტებზე)
         opt_df = df[df['is_promo'] == 0].reset_index(drop=True)
         items, total_cost = [], 0
-        totals = {'p':0, 'f':0, 'c':0, 'cal':0}
+        totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
         if not opt_df.empty and (t_p > 0 or t_cal > 0):
             costs = (opt_df['price'] / 10).tolist()
             A_ub, b_ub = [], []
+            
             if t_p > 0:
                 A_ub.append((-opt_df['protein']).tolist()); b_ub.append(-t_p)
             if t_cal > 0:
@@ -85,13 +92,18 @@ def calculate():
                 A_ub.append(opt_df['calories'].tolist()); b_ub.append(t_cal * 1.05)
 
             res = linprog(c=costs, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5), method='highs')
+            
             if res.success:
                 for i, x in enumerate(res.x):
                     grams = x * 100
                     if grams < 40: continue
                     row = opt_df.iloc[i]
                     cost = (row['price'] * grams) / 1000
-                    items.append({"name": row['product'], "display": f"~{round(grams)}გ", "cost": round(cost, 2)})
+                    items.append({
+                        "name": row['product'],
+                        "display": f"~{round(grams)}გ",
+                        "cost": round(cost, 2)
+                    })
                     total_cost += cost
                     totals['p'] += (row['protein'] * grams) / 100
                     totals['cal'] += (row['calories'] * grams) / 100
