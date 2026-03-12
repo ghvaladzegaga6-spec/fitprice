@@ -20,7 +20,7 @@
 <body class="antialiased text-gray-900">
 
     <div id="promo-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-        <div class="bg-white rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl scale-in">
+        <div class="bg-white rounded-[2.5rem] max-w-lg w-full p-8 shadow-2xl">
             <h3 class="text-2xl font-black text-gray-800 mb-2">სპეციალური შეთავაზება</h3>
             <p class="text-gray-500 text-sm mb-6">გსურთ დაამატოთ ეს პროდუქტები თქვენს კალათაში?</p>
             <div id="promo-list" class="space-y-3 mb-8"></div>
@@ -62,7 +62,7 @@
             <form id="diet-form" class="space-y-8">
                 <div class="space-y-4">
                     <label class="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">კატეგორიის ფილტრი</label>
-                    <div id="category-chips" class="flex flex-wrap gap-2">
+                    <div id="category-chips" class="flex flex-wrap gap-2 min-h-[40px]">
                         </div>
                     <div class="flex gap-3 mt-2">
                         <button type="button" onclick="setFilterMode('include')" id="mode-inc" class="flex-1 py-3 text-xs font-black rounded-xl border-2 border-green-600 bg-green-600 text-white transition-all">მხოლოდ მონიშნული</button>
@@ -130,8 +130,9 @@
         const slides = document.querySelectorAll('.banner-slide');
         let filterMode = 'include';
         let calculatedItems = [];
+        let currentPromos = [], selectedPromos = [];
 
-        // სლაიდერი [cite: 44]
+        // სლაიდერის მართვა
         setInterval(() => {
             if(slides.length > 0) {
                 slides[currentSlide].classList.remove('active');
@@ -145,23 +146,38 @@
             try {
                 const res = await fetch('/get_categories');
                 const cats = await res.json();
-                document.getElementById('category-chips').innerHTML = cats.map(cat => `
+                const container = document.getElementById('category-chips');
+                if (cats.length === 0) {
+                    container.innerHTML = "<p class='text-xs text-gray-400'>კატეგორიები არ არის ხელმისაწვდომი</p>";
+                    return;
+                }
+                container.innerHTML = cats.map(cat => `
                     <label class="category-chip cursor-pointer">
                         <input type="checkbox" name="category" value="${cat}" class="hidden peer">
                         <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">${cat}</span>
                     </label>
                 `).join('');
-            } catch (e) { console.error("კატეგორიების სინქრონიზაციის შეცდომა"); }
+            } catch (e) { 
+                console.error("კატეგორიების სინქრონიზაციის შეცდომა"); 
+            }
         }
-        syncCategories();
+        
+        // საწყისი ჩატვირთვა
+        window.addEventListener('DOMContentLoaded', syncCategories);
 
         function setFilterMode(mode) {
             filterMode = mode;
-            document.getElementById('mode-inc').className = mode === 'include' ? 'flex-1 py-3 text-xs font-black rounded-xl border-2 border-green-600 bg-green-600 text-white transition-all' : 'flex-1 py-3 text-xs font-black rounded-xl border-2 border-gray-100 text-gray-500 transition-all';
-            document.getElementById('mode-exc').className = mode === 'exclude' ? 'flex-1 py-3 text-xs font-black rounded-xl border-2 border-green-600 bg-green-600 text-white transition-all' : 'flex-1 py-3 text-xs font-black rounded-xl border-2 border-gray-100 text-gray-500 transition-all';
+            const inc = document.getElementById('mode-inc');
+            const exc = document.getElementById('mode-exc');
+            if (mode === 'include') {
+                inc.className = 'flex-1 py-3 text-xs font-black rounded-xl border-2 border-green-600 bg-green-600 text-white transition-all';
+                exc.className = 'flex-1 py-3 text-xs font-black rounded-xl border-2 border-gray-100 text-gray-500 transition-all';
+            } else {
+                exc.className = 'flex-1 py-3 text-xs font-black rounded-xl border-2 border-green-600 bg-green-600 text-white transition-all';
+                inc.className = 'flex-1 py-3 text-xs font-black rounded-xl border-2 border-gray-100 text-gray-500 transition-all';
+            }
         }
 
-        // ველების ბლოკირება [cite: 46, 47, 48, 49]
         const calInput = document.getElementById('cal-input');
         const macroInputs = document.querySelectorAll('.macro-input');
         const submitBtn = document.getElementById('submit-btn');
@@ -169,13 +185,15 @@
         function toggleFields() {
             const isCalFilled = calInput.value.length > 0;
             const isAnyMacroFilled = Array.from(macroInputs).some(i => i.value.length > 0);
-            macroInputs.forEach(i => { i.disabled = isCalFilled; isCalFilled ? i.classList.add('input-disabled') : i.classList.remove('input-disabled'); });
-            calInput.disabled = isAnyMacroFilled; isAnyMacroFilled ? calInput.classList.add('input-disabled') : calInput.classList.remove('input-disabled');
+            macroInputs.forEach(i => { 
+                i.disabled = isCalFilled; 
+                isCalFilled ? i.classList.add('input-disabled') : i.classList.remove('input-disabled'); 
+            });
+            calInput.disabled = isAnyMacroFilled; 
+            isAnyMacroFilled ? calInput.classList.add('input-disabled') : calInput.classList.remove('input-disabled');
         }
         calInput.addEventListener('input', toggleFields);
         macroInputs.forEach(input => input.addEventListener('input', toggleFields));
-
-        let currentPromos = [], selectedPromos = [];
 
         document.getElementById('diet-form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -188,16 +206,27 @@
                     document.getElementById('promo-list').innerHTML = currentPromos.map((p, i) => `
                         <label class="flex items-center p-4 border-2 border-gray-100 rounded-2xl cursor-pointer hover:border-green-500 transition">
                             <input type="checkbox" class="promo-check w-5 h-5 accent-green-600 mr-4" value="${i}">
-                            <div class="flex-1"><p class="font-black text-gray-800 text-sm uppercase">${p.product}</p><p class="text-xs text-gray-500">ფასი: ${p.price}₾</p></div>
+                            <div class="flex-1">
+                                <p class="font-black text-gray-800 text-sm uppercase">${p.product}</p>
+                                <p class="text-xs text-gray-500">ფასი: ${p.price}₾</p>
+                            </div>
                         </label>`).join('');
                     document.getElementById('promo-modal').classList.remove('hidden');
-                } else { startCalculation(); }
-            } catch (err) { startCalculation(); }
+                } else { 
+                    startCalculation(); 
+                }
+            } catch (err) { 
+                startCalculation(); 
+            }
         });
 
         function closePromo(apply) {
             selectedPromos = [];
-            if (apply) document.querySelectorAll('.promo-check:checked').forEach(c => selectedPromos.push(currentPromos[c.value]));
+            if (apply) {
+                document.querySelectorAll('.promo-check:checked').forEach(c => {
+                    selectedPromos.push(currentPromos[c.value]);
+                });
+            }
             document.getElementById('promo-modal').classList.add('hidden');
             startCalculation();
         }
@@ -218,16 +247,26 @@
             };
 
             try {
-                const response = await fetch('/calculate', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+                const response = await fetch('/calculate', { 
+                    method: 'POST', 
+                    headers: {'Content-Type': 'application/json'}, 
+                    body: JSON.stringify(data) 
+                });
                 const res = await response.json();
-                if(res.error) { alert(res.error); return; }
+                if(res.error) { 
+                    alert(res.error); 
+                    return; 
+                }
 
                 calculatedItems = res.items;
                 document.getElementById('items-list').innerHTML = res.items.map(item => `
                     <div class="flex justify-between items-center p-6 bg-gray-50 rounded-3xl border border-transparent hover:border-green-100 transition-all">
                         <div class="flex items-center gap-4">
                             <div class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm font-bold text-xl">🥗</div>
-                            <div><p class="font-black text-gray-800 uppercase text-sm tracking-tight">${item.name}</p><p class="text-xs font-bold text-green-600">${item.display}</p></div>
+                            <div>
+                                <p class="font-black text-gray-800 uppercase text-sm tracking-tight">${item.name}</p>
+                                <p class="text-xs font-bold text-green-600">${item.display}</p>
+                            </div>
                         </div>
                         <p class="font-black text-gray-900 text-lg">${item.cost.toFixed(2)}₾</p>
                     </div>`).join('');
@@ -242,8 +281,9 @@
                 document.getElementById('result-container').classList.remove('hidden');
                 document.getElementById('recipe-section').classList.add('hidden');
                 document.getElementById('result-container').scrollIntoView({ behavior: 'smooth' });
-            } catch (err) { alert("სერვერის შეცდომა"); }
-            finally { 
+            } catch (err) { 
+                alert("სერვერის შეცდომა"); 
+            } finally { 
                 submitBtn.disabled = false; 
                 submitBtn.innerText = "საუკეთესო ალტერნატივის პოვნა"; 
             }
@@ -264,8 +304,9 @@
                 document.getElementById('recipe-content').innerText = data.recipe;
                 document.getElementById('recipe-section').classList.remove('hidden');
                 document.getElementById('recipe-section').scrollIntoView({ behavior: 'smooth' });
-            } catch (e) { alert("რეცეპტის გენერირება ვერ მოხერხდა"); }
-            finally {
+            } catch (e) { 
+                alert("რეცეპტის გენერირება ვერ მოხერხდა"); 
+            } finally {
                 btn.disabled = false;
                 btn.innerText = "რეცეპტის დაგენერირება";
             }
