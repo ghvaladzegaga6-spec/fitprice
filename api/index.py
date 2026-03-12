@@ -8,7 +8,7 @@ import glob
 # OpenAI API Key
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# BASE_DIR ახლა მიუთითებს პირდაპირ api/ საქაღალდეზე
+# BASE_DIR განსაზღვრავს api/ საქაღალდის ადგილმდებარეობას
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__, 
@@ -17,16 +17,16 @@ app = Flask(__name__,
 
 def get_csv_path():
     """
-    ეძებს ფაილს სახელით data.csv პირდაპირ api საქაღალდეში
+    ეძებს ფაილს data.csv ზუსტად იმავე საქაღალდეში, სადაც index.py დევს
     """
     path = os.path.join(BASE_DIR, "data.csv")
     if os.path.exists(path):
         return path
     
-    # ალტერნატივა: თუ მაინც ძველი სახელით გაქვს დატოვებული
-    old_path = os.path.join(BASE_DIR, "2nabiji.xlsx - Sheet1.csv")
-    if os.path.exists(old_path):
-        return old_path
+    # სათადარიგო ძებნა იმავე საქაღალდეში ნებისმიერი CSV ფაილისთვის
+    files = glob.glob(os.path.join(BASE_DIR, "*.csv"))
+    if files:
+        return files[0]
         
     return None
 
@@ -72,7 +72,7 @@ def calculate():
         csv_path = get_csv_path()
         
         if not csv_path:
-            return jsonify({"error": "მონაცემთა ბაზა ვერ მოიძებნა. დარწმუნდით, რომ ფაილი data.csv დევს api/ საქაღალდეში."}), 404
+            return jsonify({"error": "მონაცემთა ბაზა (data.csv) ვერ მოიძებნა api/ საქაღალდეში."}), 404
 
         df = pd.read_csv(csv_path)
         df.columns = df.columns.str.strip()
