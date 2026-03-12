@@ -63,7 +63,47 @@
                 <div class="space-y-4">
                     <label class="text-[11px] font-black text-gray-400 uppercase tracking-[0.2em] ml-1">კატეგორიის ფილტრი</label>
                     <div id="category-chips" class="flex flex-wrap gap-2 min-h-[40px]">
-                        </div>
+                        <label class="category-chip cursor-pointer">
+                            <input type="checkbox" name="category" value="ბოსტნეული" class="hidden peer">
+                            <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">ბოსტნეული</span>
+                        </label>
+                        <label class="category-chip cursor-pointer">
+                            <input type="checkbox" name="category" value="ხილი" class="hidden peer">
+                            <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">ხილი</span>
+                        </label>
+                        <label class="category-chip cursor-pointer">
+                            <input type="checkbox" name="category" value="ხორცი" class="hidden peer">
+                            <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">ხორცი</span>
+                        </label>
+                        <label class="category-chip cursor-pointer">
+                            <input type="checkbox" name="category" value="რძის პროდუქტები" class="hidden peer">
+                            <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">რძის პროდუქტები</span>
+                        </label>
+                        <label class="category-chip cursor-pointer">
+                            <input type="checkbox" name="category" value="ბაკალეა" class="hidden peer">
+                            <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">ბაკალეა</span>
+                        </label>
+                        <label class="category-chip cursor-pointer">
+                            <input type="checkbox" name="category" value="ტკბილეული" class="hidden peer">
+                            <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">ტკბილეული</span>
+                        </label>
+                        <label class="category-chip cursor-pointer">
+                            <input type="checkbox" name="category" value="სასმელები" class="hidden peer">
+                            <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">სასმელები</span>
+                        </label>
+                        <label class="category-chip cursor-pointer">
+                            <input type="checkbox" name="category" value="თევზეული" class="hidden peer">
+                            <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">თევზეული</span>
+                        </label>
+                        <label class="category-chip cursor-pointer">
+                            <input type="checkbox" name="category" value="გაყინული პროდუქტები" class="hidden peer">
+                            <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">გაყინული</span>
+                        </label>
+                        <label class="category-chip cursor-pointer">
+                            <input type="checkbox" name="category" value="პირადი ჰიგიენა" class="hidden peer">
+                            <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">ჰიგიენა</span>
+                        </label>
+                    </div>
                     <div class="flex gap-3 mt-2">
                         <button type="button" onclick="setFilterMode('include')" id="mode-inc" class="flex-1 py-3 text-xs font-black rounded-xl border-2 border-green-600 bg-green-600 text-white transition-all">მხოლოდ მონიშნული</button>
                         <button type="button" onclick="setFilterMode('exclude')" id="mode-exc" class="flex-1 py-3 text-xs font-black rounded-xl border-2 border-gray-100 text-gray-500 transition-all">ყველა გარდა მონიშნულისა</button>
@@ -132,7 +172,6 @@
         let calculatedItems = [];
         let currentPromos = [], selectedPromos = [];
 
-        // სლაიდერის მართვა
         setInterval(() => {
             if(slides.length > 0) {
                 slides[currentSlide].classList.remove('active');
@@ -140,30 +179,6 @@
                 slides[currentSlide].classList.add('active');
             }
         }, 10000);
-
-        // კატეგორიების სინქრონიზაცია ბექენდიდან
-        async function syncCategories() {
-            try {
-                const res = await fetch('/get_categories');
-                const cats = await res.json();
-                const container = document.getElementById('category-chips');
-                if (cats.length === 0) {
-                    container.innerHTML = "<p class='text-xs text-gray-400'>კატეგორიები არ არის ხელმისაწვდომი</p>";
-                    return;
-                }
-                container.innerHTML = cats.map(cat => `
-                    <label class="category-chip cursor-pointer">
-                        <input type="checkbox" name="category" value="${cat}" class="hidden peer">
-                        <span class="px-4 py-2 rounded-xl border-2 border-gray-100 text-[12px] font-bold text-gray-500 transition-all block peer-checked:border-green-600 peer-checked:text-green-600 peer-checked:bg-green-50">${cat}</span>
-                    </label>
-                `).join('');
-            } catch (e) { 
-                console.error("კატეგორიების სინქრონიზაციის შეცდომა"); 
-            }
-        }
-        
-        // საწყისი ჩატვირთვა
-        window.addEventListener('DOMContentLoaded', syncCategories);
 
         function setFilterMode(mode) {
             filterMode = mode;
