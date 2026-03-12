@@ -8,7 +8,7 @@ import glob
 # OpenAI API Key
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# ადგენს მიმდინარე საქაღალდეს (api/)
+# BASE_DIR ახლა მიუთითებს პირდაპირ api/ საქაღალდეზე
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__, 
@@ -17,28 +17,17 @@ app = Flask(__name__,
 
 def get_csv_path():
     """
-    ეძებს .csv ფაილს პირდაპირ იმავე საქაღალდეში, სადაც app.py დევს
+    ეძებს ფაილს სახელით data.csv პირდაპირ api საქაღალდეში
     """
-    # პრიორიტეტული გზა: ფაილი დევს api/ საქაღალდეში
-    patterns = [
-        os.path.join(BASE_DIR, "2nabiji.xlsx - Sheet1.csv"),
-        os.path.join(BASE_DIR, "2nabiji.csv"),
-        os.path.join(BASE_DIR, "*.csv")
-    ]
+    path = os.path.join(BASE_DIR, "data.csv")
+    if os.path.exists(path):
+        return path
     
-    for pattern in patterns:
-        if "*" in pattern:
-            files = glob.glob(pattern)
-            if files: return files[0]
-        elif os.path.exists(pattern):
-            return pattern
-            
-    # თუ მაინც ვერ იპოვა, ეძებს ერთი საფეხურით ზემოთ
-    parent_dir = os.path.dirname(BASE_DIR)
-    parent_file = os.path.join(parent_dir, "2nabiji.xlsx - Sheet1.csv")
-    if os.path.exists(parent_file):
-        return parent_file
-
+    # ალტერნატივა: თუ მაინც ძველი სახელით გაქვს დატოვებული
+    old_path = os.path.join(BASE_DIR, "2nabiji.xlsx - Sheet1.csv")
+    if os.path.exists(old_path):
+        return old_path
+        
     return None
 
 def clean_float(val):
@@ -53,7 +42,6 @@ def index():
 def get_categories():
     path = get_csv_path()
     if not path: 
-        print("DEBUG: CSV ფაილი ვერ მოიძებნა!")
         return jsonify([])
     try:
         df = pd.read_csv(path)
@@ -61,7 +49,6 @@ def get_categories():
         categories = df['category'].dropna().unique().tolist()
         return jsonify(categories)
     except Exception as e:
-        print(f"DEBUG Error: {e}")
         return jsonify([])
 
 @app.route('/get_promos', methods=['GET'])
@@ -85,11 +72,9 @@ def calculate():
         csv_path = get_csv_path()
         
         if not csv_path:
-            return jsonify({"error": "მონაცემთა ბაზის ფაილი ვერ მოიძებნა. გთხოვთ ჩააგდოთ CSV ფაილი api/ საქაღალდეში."}), 404
+            return jsonify({"error": "მონაცემთა ბაზა ვერ მოიძებნა. დარწმუნდით, რომ ფაილი data.csv დევს api/ საქაღალდეში."}), 404
 
         df = pd.read_csv(csv_path)
-        
-        # სვეტების გასუფთავება (წაშლის ზედმეტ ჰარებს)
         df.columns = df.columns.str.strip()
         
         selected_cats = data.get('categories', [])
@@ -115,7 +100,6 @@ def calculate():
         total_spending = 0
         totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
-        # პრომოები
         for promo in data.get('selectedPromos', []):
             final_items.append({
                 "name": f"⭐ {promo['product']}", 
@@ -129,7 +113,6 @@ def calculate():
             totals['cal'] += (clean_float(promo['calories']) * u_w) / 100
             total_spending += clean_float(promo['price'])
 
-        # ოპტიმიზაცია
         opt_df = df[df['is_promo'] == 0].reset_index(drop=True)
         if not opt_df.empty:
             costs = (opt_df['price'] / 10).tolist()
