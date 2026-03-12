@@ -2,22 +2,25 @@ from flask import Flask, render_template, request, jsonify
 import pandas as pd
 from scipy.optimize import linprog
 import os
+from pathlib import Path
 from openai import OpenAI
 
-# ლოგიკა საქაღალდეებისთვის: index.py არის /api-ში, ექსელი არის / (root)-ში
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__)) # /api
-BASE_DIR = os.path.dirname(CURRENT_DIR) # / (root)
+# აბსოლუტური გზების დადგენა pathlib-ით
+# __file__ არის /api/index.py
+BASE_DIR = Path(__file__).resolve().parent.parent # ადის Root-ში
+EXCEL_PATH = BASE_DIR / '2nabiji.xlsx'
 
 app = Flask(__name__, 
-            template_folder=os.path.join(BASE_DIR, 'templates'),
-            static_folder=os.path.join(BASE_DIR, 'static'))
+            template_folder=str(BASE_DIR / 'templates'),
+            static_folder=str(BASE_DIR / 'static'))
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-EXCEL_PATH = os.path.join(BASE_DIR, '2nabiji.xlsx')
 
 def clean_float(val):
-    try: return float(val) if val else 0.0
-    except: return 0.0
+    try:
+        return float(val) if val else 0.0
+    except (ValueError, TypeError):
+        return 0.0
 
 @app.route('/')
 def index():
@@ -26,31 +29,32 @@ def index():
 @app.route('/api/get_categories', methods=['GET'])
 def get_categories():
     try:
-        if not os.path.exists(EXCEL_PATH):
+        if not EXCEL_PATH.exists():
             return jsonify([])
         
-        # ძრავა openpyxl აუცილებელია .xlsx ფაილებისთვის
+        # ვკითხულობთ ექსელს და ვასუფთავებთ სვეტებს
         df = pd.read_excel(EXCEL_PATH, engine='openpyxl')
+        df.columns = df.columns.str.strip().str.lower()
         
         if 'category' in df.columns:
-            # მოვაცილოთ ცარიელები და გავასუფთავოთ ტექსტი
             categories = df['category'].dropna().unique().tolist()
-            return jsonify([str(c).strip() for c in categories if str(c).strip()])
+            return jsonify([str(c).strip() for c in categories])
         return jsonify([])
     except Exception as e:
-        print(f"Error reading categories: {e}")
+        print(f"Error: {e}")
         return jsonify([])
 
 @app.route('/api/calculate', methods=['POST'])
 def calculate():
     try:
         data = request.get_json()
-        if not os.path.exists(EXCEL_PATH):
-            return jsonify({"error": "მონაცემთა ბაზა ვერ მოიძებნა"}), 404
+        if not EXCEL_PATH.exists():
+            return jsonify({"error": "ბაზა ვერ მოიძებნა"}), 404
 
         df = pd.read_excel(EXCEL_PATH, engine='openpyxl')
-        
-        # რიცხვითი მონაცემების გასუფთავება
+        df.columns = df.columns.str.strip().str.lower()
+
+        # რიცხვითი მონაცემების კონვერტაცია
         numeric_cols = ['protein', 'fat', 'carbs', 'calories', 'price', 'unit_weight']
         for col in numeric_cols:
             if col in df.columns:
@@ -63,48 +67,51 @@ def calculate():
         if sel_cats:
             if mode == 'include':
                 df = df[df['category'].astype(str).str.strip().isin(sel_cats)]
-            elif mode == 'exclude':
+            else:
                 df = df[~df['category'].astype(str).str.strip().isin(sel_cats)]
 
-        t_p = clean_float(data.get('protein'))
-        t_cal = clean_float(data.get('calories'))
+        target_p = clean_float(data.get('protein'))
+        target_cal = clean_float(data.get('calories'))
         
         final_items = []
         total_spending = 0
         totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
+        # მხოლოდ ის პროდუქტები, რომლებიც არაა პრომო (Optimization)
         opt_df = df[df['is_promo'] == 0].reset_index(drop=True)
         
-        if not opt_df.empty and (t_p > 0 or t_cal > 0):
-            # ხაზოვანი დაპროგრამება (Optimization)
+        if not opt_df.empty and (target_p > 0 or target_cal > 0):
+            # ფასი 100 გრამზე (რომ ოპტიმიზატორმა იაფი იპოვოს)
             costs = (opt_df['price'] / 10).tolist()
             A_ub, b_ub = [], []
             
-            if t_p > 0:
+            # ცილის პირობა: მინიმუმ target_p
+            if target_p > 0:
                 A_ub.append((-opt_df['protein']).tolist())
-                b_ub.append(-t_p)
-            if t_cal > 0:
+                b_ub.append(-target_p)
+            
+            # კალორიების პირობა: +/- 5% დიაპაზონი
+            if target_cal > 0:
                 A_ub.append((-opt_df['calories']).tolist())
-                b_ub.append(-t_cal * 0.95)
+                b_ub.append(-target_cal * 0.95)
                 A_ub.append(opt_df['calories'].tolist())
-                b_ub.append(t_cal * 1.05)
+                b_ub.append(target_cal * 1.05)
 
-            res = linprog(c=costs, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5.0), method='highs')
+            # ამოხსნა (Bounds: 0-დან 5-მდე, ანუ მაქსიმუმ 500გ პროდუქტზე)
+            res = linprog(c=costs, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5), method='highs')
             
             if res.success:
                 for i, x in enumerate(res.x):
                     grams = x * 100
-                    if grams < 50: continue
-                    row = opt_df.iloc[i]
+                    if grams < 40: continue # ძალიან მცირე რაოდენობას ვფილტრავთ
                     
-                    # ფასის და წონის დათვლა
-                    f_grams = max(100, grams)
+                    row = opt_df.iloc[i]
+                    f_grams = round(grams)
                     cost = (row['price'] * f_grams) / 1000
-                    txt = f"აწონე ~{round(f_grams)}გ"
-
+                    
                     final_items.append({
-                        "name": row['product'], 
-                        "display": txt, 
+                        "name": row['product'],
+                        "display": f"აწონე ~{f_grams}გ",
                         "cost": round(cost, 2)
                     })
                     
@@ -115,8 +122,8 @@ def calculate():
                     total_spending += cost
 
         return jsonify({
-            "items": final_items, 
-            "total_cost": round(total_spending, 2), 
+            "items": final_items,
+            "total_cost": round(total_spending, 2),
             "totals": {k: round(v, 1) for k, v in totals.items()}
         })
     except Exception as e:
@@ -126,16 +133,16 @@ def calculate():
 def get_recipe():
     try:
         data = request.get_json()
-        basket_items = data.get('items', [])
-        if not basket_items: return jsonify({"error": "კალათა ცარიელია"}), 400
+        basket = data.get('items', [])
+        if not basket: return jsonify({"error": "კალათა ცარიელია"})
 
-        products_str = '\n'.join([f"- {i['name']} ({i['display']})" for i in basket_items])
-
+        p_list = "\n".join([f"- {i['name']} ({i['display']})" for i in basket])
+        
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "შენ ხარ ქართველი მზარეული. დაწერე რეცეპტი მოცემული პროდუქტებით."},
-                {"role": "user", "content": f"პროდუქტები:\n{products_str}"}
+                {"role": "user", "content": f"პროდუქტები:\n{p_list}"}
             ]
         )
         return jsonify({"recipe": response.choices[0].message.content.strip()})
