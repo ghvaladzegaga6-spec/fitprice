@@ -8,31 +8,37 @@ import glob
 # OpenAI API Key
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# ადგენს მიმდინარე საქაღალდეს (api/)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(__name__, 
-            template_folder=os.path.join(BASE_DIR, 'templates'),
-            static_folder=os.path.join(BASE_DIR, 'static'))
+            template_folder=os.path.join(os.path.dirname(BASE_DIR), 'templates'),
+            static_folder=os.path.join(os.path.dirname(BASE_DIR), 'static'))
 
 def get_csv_path():
     """
-    ეძებს ნებისმიერ .csv ფაილს მთავარ საქაღალდეში, რომელიც შეიცავს '2nabiji'-ს სახელს
+    ეძებს .csv ფაილს პირდაპირ იმავე საქაღალდეში, სადაც app.py დევს
     """
-    # ეძებს პროექტის ძირეულ საქაღალდეში (Root)
+    # პრიორიტეტული გზა: ფაილი დევს api/ საქაღალდეში
     patterns = [
-        os.path.join(BASE_DIR, "*2nabiji*.csv"),
-        os.path.join(os.path.dirname(BASE_DIR), "*2nabiji*.csv"),
-        "2nabiji.xlsx - Sheet1.csv",
-        "2nabiji.csv"
+        os.path.join(BASE_DIR, "2nabiji.xlsx - Sheet1.csv"),
+        os.path.join(BASE_DIR, "2nabiji.csv"),
+        os.path.join(BASE_DIR, "*.csv")
     ]
     
     for pattern in patterns:
-        files = glob.glob(pattern)
-        if files:
-            return files[0]
-        if os.path.exists(pattern):
+        if "*" in pattern:
+            files = glob.glob(pattern)
+            if files: return files[0]
+        elif os.path.exists(pattern):
             return pattern
             
+    # თუ მაინც ვერ იპოვა, ეძებს ერთი საფეხურით ზემოთ
+    parent_dir = os.path.dirname(BASE_DIR)
+    parent_file = os.path.join(parent_dir, "2nabiji.xlsx - Sheet1.csv")
+    if os.path.exists(parent_file):
+        return parent_file
+
     return None
 
 def clean_float(val):
@@ -51,6 +57,7 @@ def get_categories():
         return jsonify([])
     try:
         df = pd.read_csv(path)
+        df.columns = df.columns.str.strip()
         categories = df['category'].dropna().unique().tolist()
         return jsonify(categories)
     except Exception as e:
@@ -63,6 +70,7 @@ def get_promos():
     if not path: return jsonify([])
     try:
         df = pd.read_csv(path)
+        df.columns = df.columns.str.strip()
         promo_df = df[df['is_promo'] == 1]
         if promo_df.empty: return jsonify([])
         count = min(3, len(promo_df))
@@ -77,7 +85,7 @@ def calculate():
         csv_path = get_csv_path()
         
         if not csv_path:
-            return jsonify({"error": "მონაცემთა ბაზის ფაილი (.csv) ვერ მოიძებნა. დარწმუნდით რომ ფაილი ატვირთულია მთავარ საქაღალდეში."}), 404
+            return jsonify({"error": "მონაცემთა ბაზის ფაილი ვერ მოიძებნა. გთხოვთ ჩააგდოთ CSV ფაილი api/ საქაღალდეში."}), 404
 
         df = pd.read_csv(csv_path)
         
