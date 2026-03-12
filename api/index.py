@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, jsonify
 import pandas as pd
 from scipy.optimize import linprog
 import os
+import csv
 from openai import OpenAI
 
 # გზების განსაზღვრა
@@ -19,18 +20,20 @@ def load_data():
     if not os.path.exists(FILE_PATH):
         return None
     try:
-        # შენი ფაილი არის CSV. quotechar='"' აუცილებელია, რომ ბრჭყალებში ჩასმულმა ტექსტმა კოდი არ დაკრაშოს
-        df = pd.read_csv(FILE_PATH, encoding='utf-8', sep=',', quotechar='"', on_bad_lines='skip')
+        # სპეციალური პარამეტრები შენი CSV-სთვის: 
+        # მძიმე გამყოფი, UTF-8 ენკოდინგი და ბრჭყალების იგნორირება
+        df = pd.read_csv(FILE_PATH, 
+                         encoding='utf-8', 
+                         sep=',', 
+                         quotechar='"', 
+                         doublequote=True, 
+                         on_bad_lines='skip')
+        
         df.columns = df.columns.str.strip().str.lower()
         return df
     except Exception as e:
-        try:
-            # თუ მაინც Excel-ია ფორმატით
-            df = pd.read_excel(FILE_PATH)
-            df.columns = df.columns.str.strip().str.lower()
-            return df
-        except:
-            return None
+        print(f"Read Error: {e}")
+        return None
 
 @app.route('/')
 def index():
@@ -40,7 +43,7 @@ def index():
 def get_categories():
     df = load_data()
     if df is not None and 'category' in df.columns:
-        # ვიღებთ უნიკალურ მნიშვნელობებს, ვშლით ცარიელებს და ვასუფთავებთ
+        # სუფთა კატეგორიების სია
         categories = sorted([str(c).strip() for c in df['category'].dropna().unique() if str(c).strip()])
         return jsonify(categories)
     return jsonify([])
@@ -50,15 +53,14 @@ def calculate():
     try:
         data = request.get_json()
         df = load_data()
-        if df is None: return jsonify({"error": "ბაზა ვერ მოიძებნა"}), 404
+        if df is None: return jsonify({"error": "ფაილი ვერ მოიძებნა"}), 404
 
-        # რიცხვითი მონაცემების გასწორება
-        num_cols = ['protein', 'fat', 'carbs', 'calories', 'price', 'is_promo']
-        for col in num_cols:
+        # მონაცემების ტიპების გასწორება (ციფრებად ქცევა)
+        for col in ['protein', 'fat', 'carbs', 'calories', 'price', 'is_promo']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-        # ფილტრაცია
+        # კატეგორიების ფილტრი
         sel_cats = data.get('selectedCategories', [])
         if sel_cats:
             mode = data.get('filterMode', 'include')
@@ -67,35 +69,52 @@ def calculate():
             else:
                 df = df[~df['category'].astype(str).str.strip().isin(sel_cats)]
 
-        t_p = float(data.get('protein', 0))
-        t_cal = float(data.get('calories', 0))
+        target_p = float(data.get('protein', 0))
+        target_cal = float(data.get('calories', 0))
         
+        # ოპტიმიზაცია - მხოლოდ ის პროდუქტები, სადაც is_promo არის 0
         opt_df = df[df['is_promo'] == 0].reset_index(drop=True)
-        items, totals = [], {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
+        
+        final_items = []
         total_cost = 0
+        totals = {'p': 0, 'f': 0, 'c': 0, 'cal': 0}
 
-        if not opt_df.empty and (t_p > 0 or t_cal > 0):
-            costs = (opt_df['price'] / 10).tolist()
+        if not opt_df.empty and (target_p > 0 or target_cal > 0):
+            costs = (opt_df['price'] / 10).tolist() # ფასი 100გ-ზე
             A_ub, b_ub = [], []
-            if t_p > 0:
-                A_ub.append((-opt_df['protein']).tolist()); b_ub.append(-t_p)
-            if t_cal > 0:
-                A_ub.append((-opt_df['calories']).tolist()); b_ub.append(-t_cal * 0.95)
-                A_ub.append(opt_df['calories'].tolist()); b_ub.append(t_cal * 1.05)
+            
+            if target_p > 0:
+                A_ub.append((-opt_df['protein']).tolist()); b_ub.append(-target_p)
+            
+            if target_cal > 0:
+                # კალორიების დიაპაზონი +/- 5%
+                A_ub.append((-opt_df['calories']).tolist()); b_ub.append(-target_cal * 0.95)
+                A_ub.append(opt_df['calories'].tolist()); b_ub.append(target_cal * 1.05)
 
+            # Bounds (0, 5) ნიშნავს 0-დან 500 გრამამდე თითო პროდუქტზე
             res = linprog(c=costs, A_ub=A_ub, b_ub=b_ub, bounds=(0, 5), method='highs')
+            
             if res.success:
                 for i, x in enumerate(res.x):
                     grams = x * 100
                     if grams < 45: continue
                     row = opt_df.iloc[i]
                     cost = (row['price'] * grams) / 1000
-                    items.append({"name": row['product'], "display": f"~{round(grams)}გ", "cost": round(cost, 2)})
+                    
+                    final_items.append({
+                        "name": row['product'],
+                        "display": f"~{round(grams)}გ",
+                        "cost": round(cost, 2)
+                    })
                     total_cost += cost
                     totals['p'] += (row['protein'] * grams) / 100
                     totals['cal'] += (row['calories'] * grams) / 100
 
-        return jsonify({"items": items, "total_cost": round(total_cost, 2), "totals": totals})
+        return jsonify({
+            "items": final_items,
+            "total_cost": round(total_cost, 2),
+            "totals": {k: round(v, 1) for k, v in totals.items()}
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -103,14 +122,14 @@ def calculate():
 def get_recipe():
     try:
         data = request.get_json()
-        p_names = [i['name'] for i in data.get('items', [])]
+        p_list = ", ".join([i['name'] for i in data.get('items', [])])
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": f"მომიმზადე რეცეპტი: {', '.join(p_names)}"}]
+            messages=[{"role": "user", "content": f"მომიმზადე რეცეპტი ამათგან: {p_list}"}]
         )
         return jsonify({"recipe": response.choices[0].message.content})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except:
+        return jsonify({"error": "AI შეცდომა"})
 
 if __name__ == '__main__':
     app.run(debug=True)
