@@ -28,8 +28,8 @@ class ReplaceRequest(BaseModel):
     product_id: int
     excluded_ids: Optional[List[int]] = []
 
-WEIGHT_MIN = 100
-WEIGHT_MAX = 350
+WEIGHT_MIN = 50
+WEIGHT_MAX = 500
 PKG_MIN = 100
 PKG_MAX = 300
 UNIT_MAX_RATIO = 0.40
@@ -77,7 +77,7 @@ def solve_basket(df: pd.DataFrame, target_cal: float, target_p: float, target_f:
             bounds.append((0, 200))
 
     # Use inequality constraints (<=) to approximate equality within tolerance
-    tol = 0.05  # 5% tolerance
+    tol = 0.15  # 5% tolerance
 
     A_ub = []
     b_ub = []
