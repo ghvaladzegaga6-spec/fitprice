@@ -2,7 +2,6 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List
 import pandas as pd
-import numpy as np
 from data.loader import load_products, df_to_dict
 
 router = APIRouter()
@@ -59,40 +58,33 @@ def optimize_basket(req: BasketRequest):
     if len(useful) < 3:
         raise HTTPException(status_code=422, detail="Not enough products")
 
-    # Simple greedy approach - select products by calorie density and price
+    useful["price_per_cal"] = useful.apply(
+        lambda r: get_gram_price(r) * 100 / r["calories"] if r["calories"] > 0 else 999, axis=1
+    )
+    sorted_df = useful.sort_values("price_per_cal").head(20)
+
     basket = []
     total_cal = 0
     total_p = 0
     total_f = 0
     total_c = 0
     total_price = 0
-
-    # Sort by price per calorie
-    useful["price_per_cal"] = useful.apply(
-        lambda r: get_gram_price(r) * 100 / r["calories"] if r["calories"] > 0 else 999, axis=1
-    )
-    sorted_df = useful.sort_values("price_per_cal").head(20)
-
     remaining_cal = target_cal
 
     for _, row in sorted_df.iterrows():
         if remaining_cal <= 0:
             break
-
         cal_per_100g = row["calories"]
         if cal_per_100g <= 0:
             continue
-
         needed_grams = min((remaining_cal / cal_per_100g) * 100, 400)
         needed_grams = max(needed_grams, 80)
         needed_grams = round(needed_grams)
-
         price = get_gram_price(row) * needed_grams
         p = (row["protein"] / 100.0) * needed_grams
         f = (row["fat"] / 100.0) * needed_grams
         c = (row["carbs"] / 100.0) * needed_grams
         cal = (cal_per_100g / 100.0) * needed_grams
-
         basket.append({
             "id": int(row["id"]),
             "product": row["product"],
@@ -106,7 +98,6 @@ def optimize_basket(req: BasketRequest):
             "sale_type": row["sale_type"],
             "is_promo": bool(row["is_promo"]),
         })
-
         total_price += price
         total_p += p
         total_f += f
@@ -140,38 +131,19 @@ def replace_product(req: ReplaceRequest):
     product_row = df[df["id"] == req.product_id]
     if product_row.empty:
         raise HTTPException(status_code=404, detail="Product not found")
-
     original = product_row.iloc[0]
     same_cat = df[
         (df["category"] == original["category"]) &
         (df["id"] != req.product_id) &
         (~df["id"].isin(req.excluded_ids))
     ].copy()
-
     if same_cat.empty:
         same_cat = df[
             (df["id"] != req.product_id) &
             (~df["id"].isin(req.excluded_ids))
         ].copy()
-
     if same_cat.empty:
         raise HTTPException(status_code=404, detail="No replacement found")
-
     same_cat["price_per_100g"] = same_cat.apply(lambda r: get_gram_price(r) * 100, axis=1)
     best = same_cat.nsmallest(1, "price_per_100g").iloc[0]
-
     return {"replacement": df_to_dict(pd.DataFrame([best]))[0]}
-```
-
-**Ctrl+S** → შეინახე → შემდეგ cmd-ში:
-```
-cd C:\fitprice\fitprice
-```
-```
-git add .
-```
-```
-git commit -m "fix optimizer greedy algorithm"
-```
-```
-git push
