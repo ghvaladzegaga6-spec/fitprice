@@ -52,33 +52,49 @@ def optimize_basket(req: BasketRequest):
     else:
         raise HTTPException(status_code=400, detail="Invalid input")
 
-    useful = df[(df["calories"] > 5) | (df["protein"] > 0.5)].copy()
+    useful = df[
+        (df["calories"] > 10) &
+        (df["price"] > 0) &
+        (df["category"].isin([
+            "ხორცი", "ქათამი", "თევზი", "კვერცხი", "რძის პროდუქტი",
+            "ყველი", "მარცვლეული და ბურღულეული", "ბოსტნეული", "ხილი",
+            "პურ-ფუნთუშეული", "მაკარონი", "ნედლი ხორცი", "გაყინული თევზი",
+            "მაწონი", "რძე & ნაღები", "კეფირი & აირანი", "იოგურტი & პუდიგრი"
+        ]))
+    ].copy()
     useful = useful.reset_index(drop=True)
 
     if len(useful) < 3:
-        raise HTTPException(status_code=422, detail="Not enough products")
+        useful = df[(df["calories"] > 10) & (df["price"] > 0)].copy()
+        useful = useful.reset_index(drop=True)
 
     useful["price_per_cal"] = useful.apply(
-        lambda r: get_gram_price(r) * 100 / r["calories"] if r["calories"] > 0 else 999, axis=1
+        lambda r: (get_gram_price(r) * 100) / r["calories"] if r["calories"] > 0 else 999,
+        axis=1
     )
-    sorted_df = useful.sort_values("price_per_cal").head(20)
 
+    categories = useful["category"].unique().tolist()
     basket = []
     total_cal = 0
-    total_p = 0
-    total_f = 0
-    total_c = 0
-    total_price = 0
+    total_p = 0.0
+    total_f = 0.0
+    total_c = 0.0
+    total_price = 0.0
     remaining_cal = target_cal
 
-    for _, row in sorted_df.iterrows():
+    for cat in categories:
         if remaining_cal <= 0:
             break
+        cat_df = useful[useful["category"] == cat].sort_values("price_per_cal")
+        if cat_df.empty:
+            continue
+        row = cat_df.iloc[0]
         cal_per_100g = row["calories"]
         if cal_per_100g <= 0:
             continue
-        needed_grams = min((remaining_cal / cal_per_100g) * 100, 400)
-        needed_grams = max(needed_grams, 80)
+        share = remaining_cal / len(categories)
+        needed_grams = min((share / cal_per_100g) * 100, 400)
+        needed_grams = max(needed_grams, 100)
         needed_grams = round(needed_grams)
         price = get_gram_price(row) * needed_grams
         p = (row["protein"] / 100.0) * needed_grams
@@ -144,6 +160,8 @@ def replace_product(req: ReplaceRequest):
         ].copy()
     if same_cat.empty:
         raise HTTPException(status_code=404, detail="No replacement found")
-    same_cat["price_per_100g"] = same_cat.apply(lambda r: get_gram_price(r) * 100, axis=1)
+    same_cat["price_per_100g"] = same_cat.apply(
+        lambda r: get_gram_price(r) * 100, axis=1
+    )
     best = same_cat.nsmallest(1, "price_per_100g").iloc[0]
     return {"replacement": df_to_dict(pd.DataFrame([best]))[0]}
