@@ -1,0 +1,61 @@
+version: '3.9'
+
+# ─── ლოკალური dev გარემო (SSL გარეშე) ──────────────────────────
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fitprice_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fitprice_db
+      POSTGRES_USER: fitprice_user
+      POSTGRES_PASSWORD: devpassword123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitprice_user -d fitprice_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  python-service:
+    build:
+      context: ./python-service
+      dockerfile: Dockerfile
+    container_name: fitprice_python_dev
+    restart: unless-stopped
+    environment:
+      ALLOWED_ORIGINS: http://localhost:3000
+      INTERNAL_TOKEN: dev-internal-token-123
+    volumes:
+      - ./python-service/data:/app/data
+    ports:
+      - "8000:8000"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fitprice_backend_dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_URL: postgresql://fitprice_user:devpassword123@postgres:5432/fitprice_db
+      JWT_SECRET: dev-jwt-secret-min-32-chars-long-here
+      JWT_REFRESH_SECRET: dev-refresh-secret-min-32-chars-long
+      PYTHON_SERVICE_URL: http://python-service:8000
+      INTERNAL_TOKEN: dev-internal-token-123
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ALLOWED_ORIGINS: http://localhost:3000
+    ports:
+      - "4000:4000"
+
+volumes:
+  postgres_dev_data:

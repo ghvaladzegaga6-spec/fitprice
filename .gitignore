@@ -1,0 +1,33 @@
+# Env files — NEVER commit these
+.env
+.env.local
+.env.production
+.env.development
+
+# Node
+node_modules/
+dist/
+.next/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# DB
+*.sqlite
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+docker/nginx/ssl/*.pem
+
+# IDE
+.vscode/
+.idea/

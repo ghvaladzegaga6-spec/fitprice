@@ -1,0 +1,98 @@
+version: '3.9'
+
+services:
+  # ─── PostgreSQL ───────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: fitprice_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fitprice_db
+      POSTGRES_USER: fitprice_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitprice_user -d fitprice_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fitprice_internal
+
+  # ─── Python Optimization Service ──────────────────────────────
+  python-service:
+    build:
+      context: ./python-service
+      dockerfile: Dockerfile
+    container_name: fitprice_python
+    restart: unless-stopped
+    environment:
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+    volumes:
+      - ./python-service/data:/app/data:ro
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - fitprice_internal
+
+  # ─── Node.js Backend ──────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fitprice_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      python-service:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://fitprice_user:${POSTGRES_PASSWORD}@postgres:5432/fitprice_db
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      PYTHON_SERVICE_URL: http://python-service:8000
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+    ports:
+      - "4000:4000"
+    networks:
+      - fitprice_internal
+      - fitprice_external
+
+  # ─── Nginx Reverse Proxy ──────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: fitprice_nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - fitprice_external
+
+volumes:
+  postgres_data:
+  nginx_logs:
+
+networks:
+  fitprice_internal:
+    internal: true
+  fitprice_external:
+    driver: bridge
