@@ -9,7 +9,7 @@ import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import hpp from 'hpp';
 import rateLimit from 'express-rate-limit';
-import { db } from './db';
+import { db, runMigrations } from './db';
 import { authRouter } from './auth/auth.router';
 import { basketRouter } from './basket/basket.router';
 import { nutritionRouter } from './nutrition/nutrition.router';
