@@ -173,8 +173,8 @@ export function BasketCalculator({ onSubmit, isLoading }: Props) {
                 placeholder={placeholder}
                 {...register(name as any, { valueAsNumber: true })}
               />
-              {errors[name as keyof typeof errors] && (
-                <p className="text-red-500 text-xs mt-1">{String((errors[name as keyof typeof errors] as any)?.message)}</p>
+              {errors[name as string as any] && (
+                <p className="text-red-500 text-xs mt-1">{String((errors[name as string as any] as any)?.message)}</p>
               )}
             </div>
           ))}
