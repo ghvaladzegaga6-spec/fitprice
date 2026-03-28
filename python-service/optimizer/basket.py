@@ -21,21 +21,28 @@ class ReplaceRequest(BaseModel):
     product_id: int
     excluded_ids: Optional[List[int]] = []
 
-def get_price(row, grams: float) -> float:
+def calc_price(row, grams: float) -> float:
     if row["sale_type"] == "package_pieces":
-        pkg_weight = row["total_package_weight"] if row["total_package_weight"] > 0 else 100
-        num_packages = max(1, round(grams / pkg_weight))
-        return row["price"] * num_packages
+        pkg = row["total_package_weight"] if row["total_package_weight"] > 0 else 500
+        n = max(1, round(grams / pkg))
+        return round(row["price"] * n, 2)
     else:
-        return (row["price"] / 1000.0) * grams
+        return round((row["price"] / 1000.0) * grams, 2)
 
-def get_nutrients(row, grams: float):
-    factor = grams / 100.0
+def calc_grams_for_package(row, wanted_grams: float) -> float:
+    if row["sale_type"] == "package_pieces":
+        pkg = row["total_package_weight"] if row["total_package_weight"] > 0 else 500
+        n = max(1, round(wanted_grams / pkg))
+        return pkg * n
+    return wanted_grams
+
+def nutrients(row, grams: float) -> dict:
+    f = grams / 100.0
     return {
-        "protein": round(row["protein"] * factor, 1),
-        "fat": round(row["fat"] * factor, 1),
-        "carbs": round(row["carbs"] * factor, 1),
-        "calories": round(row["calories"] * factor, 1),
+        "protein": round(float(row["protein"]) * f, 1),
+        "fat": round(float(row["fat"]) * f, 1),
+        "carbs": round(float(row["carbs"]) * f, 1),
+        "calories": round(float(row["calories"]) * f, 1),
     }
 
 @router.post("/optimize")
@@ -67,124 +74,74 @@ def optimize_basket(req: BasketRequest):
     if len(useful) < 3:
         raise HTTPException(status_code=422, detail="Not enough products")
 
-    useful["cal_per_lari"] = useful.apply(
-        lambda r: (r["calories"] / 100.0 * 100) / (r["price"] / (r["total_package_weight"] if r["sale_type"] == "package_pieces" and r["total_package_weight"] > 0 else 1000) * 100)
-        if r["price"] > 0 else 0,
-        axis=1
-    )
-
     basket = []
-    remaining_p = target_p
-    remaining_f = target_f
-    remaining_c = target_c
-    remaining_cal = target_cal
-    total_price = 0.0
+    used_ids = set()
     total_p = 0.0
     total_f = 0.0
     total_c = 0.0
     total_cal = 0.0
-    used_ids = set()
+    total_price = 0.0
 
-    protein_cats = ["ნედლი ხორცი", "ქათამი", "კვერცხი", "ყველი", "თევზი", "გაყინული თევზი", "ზღვის პროდუქტები"]
-    fat_cats = ["კარაქი & სპრედი", "მაიონეზი & სოუსები"]
-    carb_cats = ["მარცვლეული და ბურღულეული", "მაკარონი", "პურ-ფუნთუშეული", "ბოსტნეული", "ხილი"]
+    plan = [
+        (["ნედლი ხორცი", "ქათამი"], "protein", target_p * 0.5, 150, 500),
+        (["კვერცხი", "ყველი"], "protein", target_p * 0.3, 100, 300),
+        (["მარცვლეული და ბურღულეული", "მაკარონი"], "carbs", target_c * 0.4, 100, 400),
+        (["პურ-ფუნთუშეული"], "carbs", target_c * 0.15, 100, 600),
+        (["ბოსტნეული"], "carbs", target_c * 0.2, 150, 400),
+        (["ხილი"], "carbs", target_c * 0.1, 100, 300),
+        (["კარაქი & სპრედი", "მაიონეზი & სოუსები"], "fat", target_f * 0.4, 50, 200),
+        (["რძე & ნაღები", "მაწონი", "იოგურტი & პუდიგრი"], "protein", target_p * 0.2, 100, 400),
+    ]
 
-    def add_product(cat_list, target_nutrient, nutrient_key, grams_min=100, grams_max=500):
-        nonlocal remaining_cal, remaining_p, remaining_f, remaining_c
-        nonlocal total_price, total_p, total_f, total_c, total_cal
+    for cats, nutrient_key, target_amount, min_g, max_g in plan:
+        if target_amount <= 0:
+            continue
 
         candidates = useful[
-            (useful["category"].isin(cat_list)) &
+            (useful["category"].isin(cats)) &
             (~useful["id"].isin(used_ids)) &
-            (useful[nutrient_key] > 0)
+            (useful[nutrient_key] > 0) &
+            (useful["calories"] > 10)
         ].copy()
 
         if candidates.empty:
-            return
+            continue
 
-        candidates["score"] = candidates[nutrient_key] / candidates["price"]
-        best = candidates.nlargest(1, "score").iloc[0]
+        candidates["value"] = candidates[nutrient_key] / candidates["price"]
+        best = candidates.nlargest(1, "value").iloc[0]
 
-        if best["calories"] <= 0:
-            return
+        nutrient_per_100g = float(best[nutrient_key])
+        if nutrient_per_100g <= 0:
+            continue
 
-        needed_grams = (target_nutrient / (best[nutrient_key] / 100.0))
-        needed_grams = max(grams_min, min(needed_grams, grams_max))
+        wanted_grams = (target_amount / nutrient_per_100g) * 100.0
+        wanted_grams = max(min_g, min(wanted_grams, max_g))
+        actual_grams = calc_grams_for_package(best, wanted_grams)
+        actual_grams = round(actual_grams)
 
-        if best["sale_type"] == "package_pieces":
-            pkg = best["total_package_weight"] if best["total_package_weight"] > 0 else 100
-            needed_grams = max(pkg, round(needed_grams / pkg) * pkg)
-
-        needed_grams = round(needed_grams)
-        price = get_price(best, needed_grams)
-        nuts = get_nutrients(best, needed_grams)
+        price = calc_price(best, actual_grams)
+        n = nutrients(best, actual_grams)
 
         basket.append({
             "id": int(best["id"]),
             "product": best["product"],
             "category": best["category"],
-            "grams": needed_grams,
-            "price": round(price, 2),
-            "protein": nuts["protein"],
-            "fat": nuts["fat"],
-            "carbs": nuts["carbs"],
-            "calories": nuts["calories"],
+            "grams": actual_grams,
+            "price": price,
+            "protein": n["protein"],
+            "fat": n["fat"],
+            "carbs": n["carbs"],
+            "calories": n["calories"],
             "sale_type": best["sale_type"],
             "is_promo": bool(best["is_promo"]),
         })
 
         used_ids.add(int(best["id"]))
+        total_p += n["protein"]
+        total_f += n["fat"]
+        total_c += n["carbs"]
+        total_cal += n["calories"]
         total_price += price
-        total_p += nuts["protein"]
-        total_f += nuts["fat"]
-        total_c += nuts["carbs"]
-        total_cal += nuts["calories"]
-        remaining_p = max(0, target_p - total_p)
-        remaining_f = max(0, target_f - total_f)
-        remaining_c = max(0, target_c - total_c)
-        remaining_cal = max(0, target_cal - total_cal)
-
-    add_product(protein_cats, target_p * 0.6, "protein", 100, 600)
-    add_product(protein_cats, target_p * 0.4, "protein", 100, 400)
-    add_product(carb_cats, target_c * 0.5, "carbs", 100, 500)
-    add_product(carb_cats, target_c * 0.3, "carbs", 100, 400)
-    add_product(carb_cats, target_c * 0.2, "carbs", 100, 300)
-    add_product(fat_cats, target_f * 0.5, "fat", 50, 200)
-
-    if remaining_cal > 100:
-        extra = useful[
-            (~useful["id"].isin(used_ids)) &
-            (useful["calories"] > 20)
-        ].copy()
-        if not extra.empty:
-            extra["score"] = extra["calories"] / extra["price"]
-            best = extra.nlargest(1, "score").iloc[0]
-            needed_grams = (remaining_cal / (best["calories"] / 100.0))
-            needed_grams = max(100, min(needed_grams, 400))
-            if best["sale_type"] == "package_pieces":
-                pkg = best["total_package_weight"] if best["total_package_weight"] > 0 else 100
-                needed_grams = max(pkg, round(needed_grams / pkg) * pkg)
-            needed_grams = round(needed_grams)
-            price = get_price(best, needed_grams)
-            nuts = get_nutrients(best, needed_grams)
-            basket.append({
-                "id": int(best["id"]),
-                "product": best["product"],
-                "category": best["category"],
-                "grams": needed_grams,
-                "price": round(price, 2),
-                "protein": nuts["protein"],
-                "fat": nuts["fat"],
-                "carbs": nuts["carbs"],
-                "calories": nuts["calories"],
-                "sale_type": best["sale_type"],
-                "is_promo": bool(best["is_promo"]),
-            })
-            total_price += price
-            total_p += nuts["protein"]
-            total_f += nuts["fat"]
-            total_c += nuts["carbs"]
-            total_cal += nuts["calories"]
 
     if not basket:
         raise HTTPException(status_code=422, detail="Could not build basket")
@@ -226,8 +183,7 @@ def replace_product(req: ReplaceRequest):
     if same_cat.empty:
         raise HTTPException(status_code=404, detail="No replacement found")
     same_cat["price_per_100g"] = same_cat.apply(
-        lambda r: (r["price"] / (r["total_package_weight"] if r["sale_type"] == "package_pieces" and r["total_package_weight"] > 0 else 1000)) * 100,
-        axis=1
+        lambda r: calc_price(r, 100), axis=1
     )
     best = same_cat.nsmallest(1, "price_per_100g").iloc[0]
     return {"replacement": df_to_dict(pd.DataFrame([best]))[0]}
