@@ -83,16 +83,15 @@ def optimize_basket(req: BasketRequest):
     total_price = 0.0
 
     plan = [
-        (["ნედლი ხორცი", "ქათამი", "ღორი", "საქონელი"], "protein", target_p * 0.5, 150, 500),
-        (["კვერცხი", "ყველი", "მაწონი"], "protein", target_p * 0.3, 100, 400),
-        (["მარცვლეული და ბურღულეული", "მაკარონი"], "carbs", target_c * 0.35, 100, 400),
-        (["პურ-ფუნთუშეული"], "carbs", target_c * 0.15, 100, 600),
-        (["ბოსტნეული"], "carbs", target_c * 0.25, 150, 500),
-        (["ხილი", "ციტრუსი"], "carbs", target_c * 0.15, 100, 300),
-        (["კარაქი & სპრედი"], "fat", target_f * 0.5, 50, 200),
-        (["რძე & ნაღები", "კეფირი & აირანი", "იოგურტი & პუდიგრი"], "protein", target_p * 0.2, 100, 500),
+        (["ნედლი ხორცი", "ქათამი", "ღორი", "საქონელი"], "calories", target_cal * 0.30, 150, 500),
+        (["კვერცხი", "ყველი"], "calories", target_cal * 0.15, 100, 400),
+        (["მარცვლეული და ბურღულეული", "მაკარონი"], "calories", target_cal * 0.20, 100, 400),
+        (["პურ-ფუნთუშეული"], "calories", target_cal * 0.10, 100, 600),
+        (["ბოსტნეული"], "calories", target_cal * 0.10, 150, 500),
+        (["ხილი", "ციტრუსი"], "calories", target_cal * 0.05, 100, 300),
+        (["კარაქი & სპრედი"], "calories", target_cal * 0.05, 50, 200),
+        (["რძე & ნაღები", "მაწონი", "კეფირი & აირანი"], "calories", target_cal * 0.05, 100, 500),
     ]
-
     for cats, nutrient_key, target_amount, min_g, max_g in plan:
         if target_amount <= 0:
             continue
