@@ -36,23 +36,23 @@ def price_per_gram(row) -> float:
         return float(row["price"]) / get_pkg_weight(row)
     return float(row["price"]) / 1000.0
 
-def resolve(row, wanted_grams: float):
+def resolve(row, wanted_grams: float, min_g: float = 50, max_g: float = 500):
     if row["sale_type"] == "package_pieces":
         pkg = get_pkg_weight(row)
         use = min(wanted_grams, pkg * PKG_MAX_RATIO)
-        use = max(use, 1.0)
+        use = max(use, min_g)
         use = round(use)
         price = float(row["price"])
         pct = round((use / pkg) * 100)
         note = f"შეიძინე 1 შეკვრა ({pkg:.0f}გ · {price:.2f}₾) — გამოიყენე {use}გ ({pct}%)"
         return use, price, note
     else:
-        grams = max(1, round(wanted_grams))
+        grams = max(min_g, min(round(wanted_grams), max_g))
         price = round(price_per_gram(row) * grams, 2)
         return grams, price, None
 
-def make_item(row, wanted_grams: float) -> dict:
-    grams, price, note = resolve(row, wanted_grams)
+def make_item(row, wanted_grams: float, min_g: float = 50, max_g: float = 500) -> dict:
+    grams, price, note = resolve(row, wanted_grams, min_g, max_g)
     f = grams / 100.0
     return {
         "id": int(row["id"]),
@@ -106,23 +106,23 @@ def optimize_basket(req: BasketRequest):
         raise HTTPException(status_code=400, detail="Invalid input")
 
     plan = [
-        (["ნედლი ხორცი", "ქათამი", "ღორი", "საქონელი", "ფარშრებული"], 0.28),
-        (["კვერცხი"], 0.07),
-        (["ყველი", "მაწონი", "არაჟანი"], 0.06),
-        (["მარცვლეული და ბურღულეული"], 0.14),
-        (["მაკარონი"], 0.09),
-        (["პურ-ფუნთუშეული"], 0.07),
-        (["ბოსტნეული"], 0.12),
-        (["ხილი", "ციტრუსი"], 0.06),
-        (["კარაქი & სპრედი"], 0.03),
-        (["რძე & ნაღები", "კეფირი & აირანი", "იოგურტი & პუდიგრი"], 0.03),
+        (["ნედლი ხორცი", "ქათამი", "ღორი", "საქონელი", "ფარშრებული"], 0.28, 120, 350),
+        (["კვერცხი"], 0.07, 120, 240),
+        (["ყველი", "მაწონი", "არაჟანი"], 0.06, 50, 150),
+        (["მარცვლეული და ბურღულეული"], 0.14, 80, 200),
+        (["მაკარონი"], 0.09, 80, 180),
+        (["პურ-ფუნთუშეული"], 0.07, 100, 300),
+        (["ბოსტნეული"], 0.12, 100, 250),
+        (["ხილი", "ციტრუსი"], 0.06, 100, 250),
+        (["კარაქი & სპრედი"], 0.03, 20, 60),
+        (["რძე & ნაღები", "კეფირი & აირანი", "იოგურტი & პუდიგრი"], 0.03, 100, 250),
     ]
 
     basket = []
     used_ids = set()
     total_cal = total_p = total_f = total_c = total_price = 0.0
 
-    for cats, share in plan:
+    for cats, share, min_g, max_g in plan:
         cal_share = target_cal * share
         row = pick_cheapest(df, cats, used_ids)
         if row is None:
@@ -131,7 +131,7 @@ def optimize_basket(req: BasketRequest):
         if cal100 <= 0:
             continue
         wanted = (cal_share / cal100) * 100.0
-        item = make_item(row, wanted)
+        item = make_item(row, wanted, min_g, max_g)
         basket.append(item)
         used_ids.add(item["id"])
         total_p += item["protein"]
@@ -153,8 +153,8 @@ def optimize_basket(req: BasketRequest):
             row = row_df.iloc[0]
             if row["sale_type"] == "weight" and float(row["calories"]) > 0:
                 extra = (cal_diff / float(row["calories"])) * 100.0
-                new_grams = max(10, item["grams"] + extra)
-                new_item = make_item(row, new_grams)
+                new_grams = max(50, item["grams"] + extra)
+                new_item = make_item(row, new_grams, 50, 600)
                 total_cal = total_cal - item["calories"] + new_item["calories"]
                 total_p = total_p - item["protein"] + new_item["protein"]
                 total_f = total_f - item["fat"] + new_item["fat"]
@@ -213,7 +213,7 @@ def rebalance_basket(req: RebalanceRequest):
             new_basket.append(item)
             continue
         row = row_df.iloc[0]
-        new_item = make_item(row, item["grams"] * scale)
+        new_item = make_item(row, item["grams"] * scale, 50, 600)
         new_basket.append(new_item)
 
     totals = {
