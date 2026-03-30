@@ -32,11 +32,22 @@ def get_pkg_weight(row) -> float:
     return float(row["total_package_weight"]) if float(row["total_package_weight"]) > 0 else 500.0
 
 def price_per_gram(row) -> float:
+    """
+    წონითი: weight სვეტი = 1000 → ფასი 1კგ-ზე → price/1000
+             weight სვეტი = 100  → ფასი 100გ-ზე → price/100
+    შეკვრითი: price/package_weight
+    """
     if row["sale_type"] == "package_pieces":
         return float(row["price"]) / get_pkg_weight(row)
-    return float(row["price"]) / 1000.0
+    else:
+        w = float(row.get("weight", 1000) or 1000)
+        return float(row["price"]) / w
 
 def resolve(row, wanted_grams: float):
+    """
+    წონითი: ზუსტი გრამები, ფასი პროპორციული
+    შეკვრითი: max 40%, ფასი = მთლიანი შეკვრა
+    """
     if row["sale_type"] == "package_pieces":
         pkg = get_pkg_weight(row)
         use = min(wanted_grams, pkg * PKG_MAX_RATIO)
@@ -44,11 +55,15 @@ def resolve(row, wanted_grams: float):
         use = round(use)
         price = float(row["price"])
         pct = round((use / pkg) * 100)
-        note = f"შეიძინე 1 შეკვრა ({pkg:.0f}გ · {price:.2f}₾) — გამოიყენე {use}გ ({pct}%)"
+        note = (
+            f"🛒 შეიძინე 1 შეკვრა — {pkg:.0f}გ · {price:.2f}₾  |  "
+            f"✂️ გამოიყენე: {use}გ ({pct}%)"
+        )
         return use, price, note
     else:
         grams = max(1, round(wanted_grams))
-        price = round(price_per_gram(row) * grams, 2)
+        w = float(row.get("weight", 1000) or 1000)
+        price = round((float(row["price"]) / w) * grams, 2)
         return grams, price, None
 
 def make_item(row, wanted_grams: float) -> dict:
@@ -130,10 +145,7 @@ def optimize_basket(req: BasketRequest):
         cal100 = float(row["calories"])
         if cal100 <= 0:
             continue
-
-        # ზუსტი გრამები
         wanted = (cal_share / cal100) * 100.0
-
         item = make_item(row, wanted)
         basket.append(item)
         used_ids.add(item["id"])
@@ -146,7 +158,7 @@ def optimize_basket(req: BasketRequest):
     if not basket:
         raise HTTPException(status_code=422, detail="Could not build basket")
 
-    # კალორიების ზუსტი დაბალანსება წონითი პროდუქტით
+    # კალორიების ზუსტი დაბალანსება
     cal_diff = target_cal - total_cal
     iterations = 0
     while abs(cal_diff) > target_cal * 0.01 and iterations < 5:
@@ -160,11 +172,11 @@ def optimize_basket(req: BasketRequest):
                 extra = (cal_diff / float(row["calories"])) * 100.0
                 new_grams = max(1, item["grams"] + extra)
                 new_item = make_item(row, new_grams)
-                total_cal = total_cal - item["calories"] + new_item["calories"]
-                total_p = total_p - item["protein"] + new_item["protein"]
-                total_f = total_f - item["fat"] + new_item["fat"]
-                total_c = total_c - item["carbs"] + new_item["carbs"]
-                total_price = total_price - item["price"] + new_item["price"]
+                total_cal += new_item["calories"] - item["calories"]
+                total_p += new_item["protein"] - item["protein"]
+                total_f += new_item["fat"] - item["fat"]
+                total_c += new_item["carbs"] - item["carbs"]
+                total_price += new_item["price"] - item["price"]
                 basket[i] = new_item
                 cal_diff = target_cal - total_cal
                 break
