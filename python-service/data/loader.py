@@ -2,7 +2,6 @@ import pandas as pd
 import os
 import math
 from fastapi import APIRouter
-from typing import Optional
 
 router = APIRouter()
 DATA_PATH = os.path.join(os.path.dirname(__file__), "products.csv")
@@ -11,9 +10,7 @@ def load_products() -> pd.DataFrame:
     df = pd.read_csv(DATA_PATH, encoding="utf-8-sig")
     df.columns = df.columns.str.strip()
 
-    numeric_cols = ["protein", "fat", "carbs", "calories", "price",
-                    "weight_per_100g", "full_package_weight"]
-    for col in numeric_cols:
+    for col in ["protein","fat","carbs","calories","price","weight","package_weight"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
@@ -22,18 +19,16 @@ def load_products() -> pd.DataFrame:
     df.reset_index(drop=True, inplace=True)
     df["id"] = df.index
 
-    # sale_type ავტომატური განსაზღვრა
-    # თუ full_package_weight > 0 → package, სხვა → weight
+    # sale_type: package_weight > 0 → შეკვრა, სხვა → წონა
     df["sale_type"] = df.apply(
-        lambda r: "package_pieces" if r["full_package_weight"] > 0 else "weight",
+        lambda r: "package_pieces" if r["package_weight"] > 0 else "weight",
         axis=1
     )
     # total_package_weight alias
     df["total_package_weight"] = df.apply(
-        lambda r: r["full_package_weight"] if r["full_package_weight"] > 0 else 1000.0,
+        lambda r: r["package_weight"] if r["package_weight"] > 0 else r["weight"],
         axis=1
     )
-
     return df
 
 def df_to_dict(df: pd.DataFrame) -> list:
@@ -43,8 +38,6 @@ def df_to_dict(df: pd.DataFrame) -> list:
         for k, v in row.items():
             if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
                 record[k] = None
-            elif isinstance(v, bool):
-                record[k] = v
             else:
                 record[k] = v
         records.append(record)
@@ -58,8 +51,7 @@ def get_products():
 @router.get("/categories")
 def get_categories():
     df = load_products()
-    cats = sorted(df["category"].unique().tolist())
-    return {"categories": cats}
+    return {"categories": sorted(df["category"].unique().tolist())}
 
 @router.get("/promos")
 def get_promos():
