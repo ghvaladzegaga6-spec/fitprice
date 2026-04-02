@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import Optional, List
 import pandas as pd
+import math
 from data.loader import load_products, df_to_dict
 
 router = APIRouter()
@@ -20,6 +21,9 @@ class BasketRequest(BaseModel):
 class ReplaceRequest(BaseModel):
     product_id: int
     excluded_ids: Optional[List[int]] = []
+    target_calories: Optional[float] = None
+    new_category: Optional[str] = None
+    sort_by_price: str = Field("asc", pattern="^(asc|desc)$")
 
 class RebalanceRequest(BaseModel):
     basket: List[dict]
@@ -28,99 +32,78 @@ class RebalanceRequest(BaseModel):
 
 PKG_MAX_RATIO = 0.40
 
-LIMITS = {
-    "500-1000": {
-        "არაჟანი": 15, "ბოსტნეული": 200, "გაყინული თევზი": 100,
-        "ზღვის პროდუქტები": 100, "თაფლი, მურაბა & ჯემი": 10,
-        "იოგურტი & პუდიგრი": 150, "კარაქი & სპრედი": 5,
-        "კეფირი & აირანი": 200, "კვერცხი": 120, "კონსერვები": 70,
-        "მაიონეზი & სოუსები": 10, "მაკარონი": 50, "მარილი": 3,
-        "მარინადი": 20, "მარცვლეული და ბურღულეული": 50, "მაწონი": 150,
-        "მწვანილები": 20, "ნახევარფაბრიკატები": 70, "ნედლი ხორცი": 100,
-        "პურ-ფუნთუშეული": 50, "რძე & ნაღები": 150, "რძის სიკვიტი": 30,
-        "სასმელები": 250, "საქონელი": 100, "საცხობი საშუალებები": 10,
-        "სიმინდის ფანტელი": 30, "სნექი": 25, "სწრაფად მოსამზადებელი საკვები": 50,
-        "ტკბილეული და ნაყინი": 20, "ფანტელი და მიუსელი": 30,
-        "ფარშრებული": 100, "ქათამი": 120, "ღორი": 80, "ყველი": 30,
-        "შაქარი": 10, "შებოლილი თევზი": 60, "შესქელებული რძე": 20,
-        "ციტრუსი": 200, "ძეხვეული": 50, "ძმარი": 10, "ხილი": 200,
-    },
-    "1000-1500": {
-        "არაჟანი": 20, "ბოსტნეული": 300, "გაყინული თევზი": 120,
-        "ზღვის პროდუქტები": 120, "თაფლი, მურაბა & ჯემი": 15,
-        "იოგურტი & პუდიგრი": 200, "კარაქი & სპრედი": 10,
-        "კეფირი & აირანი": 250, "კვერცხი": 120, "კონსერვები": 100,
-        "მაიონეზი & სოუსები": 15, "მაკარონი": 70, "მარილი": 4,
-        "მარინადი": 30, "მარცვლეული და ბურღულეული": 80, "მაწონი": 200,
-        "მწვანილები": 30, "ნახევარფაბრიკატები": 100, "ნედლი ხორცი": 150,
-        "პურ-ფუნთუშეული": 80, "რძე & ნაღები": 200, "რძის სიკვიტი": 40,
-        "სასმელები": 400, "საქონელი": 150, "საცხობი საშუალებები": 15,
-        "სიმინდის ფანტელი": 50, "სნექი": 40, "სწრაფად მოსამზადებელი საკვები": 80,
-        "ტკბილეული და ნაყინი": 30, "ფანტელი და მიუსელი": 50,
-        "ფარშრებული": 150, "ქათამი": 150, "ღორი": 120, "ყველი": 50,
-        "შაქარი": 15, "შებოლილი თევზი": 80, "შესქელებული რძე": 30,
-        "ციტრუსი": 250, "ძეხვეული": 70, "ძმარი": 15, "ხილი": 250,
-    },
-    "1500-2500": {
-        "არაჟანი": 30, "ბოსტნეული": 350, "გაყინული თევზი": 150,
-        "ზღვის პროდუქტები": 150, "თაფლი, მურაბა & ჯემი": 25,
-        "იოგურტი & პუდიგრი": 250, "კარაქი & სპრედი": 15,
-        "კეფირი & აირანი": 300, "კვერცხი": 180, "კონსერვები": 120,
-        "მაიონეზი & სოუსები": 20, "მაკარონი": 100, "მარილი": 5,
-        "მარინადი": 40, "მარცვლეული და ბურღულეული": 120, "მაწონი": 250,
-        "მწვანილები": 40, "ნახევარფაბრიკატები": 120, "ნედლი ხორცი": 200,
-        "პურ-ფუნთუშეული": 120, "რძე & ნაღები": 250, "რძის სიკვიტი": 50,
-        "სასმელები": 500, "საქონელი": 200, "საცხობი საშუალებები": 20,
-        "სიმინდის ფანტელი": 70, "სნექი": 50, "სწრაფად მოსამზადებელი საკვები": 100,
-        "ტკბილეული და ნაყინი": 40, "ფანტელი და მიუსელი": 70,
-        "ფარშრებული": 200, "ქათამი": 200, "ღორი": 150, "ყველი": 70,
-        "შაქარი": 25, "შებოლილი თევზი": 100, "შესქელებული რძე": 40,
-        "ციტრუსი": 300, "ძეხვეული": 100, "ძმარი": 20, "ხილი": 300,
-    },
-    "2500+": {
-        "არაჟანი": 40, "ბოსტნეული": 400, "გაყინული თევზი": 200,
-        "ზღვის პროდუქტები": 200, "თაფლი, მურაბა & ჯემი": 30,
-        "იოგურტი & პუდიგრი": 300, "კარაქი & სპრედი": 20,
-        "კეფირი & აირანი": 400, "კვერცხი": 240, "კონსერვები": 150,
-        "მაიონეზი & სოუსები": 25, "მაკარონი": 130, "მარილი": 5,
-        "მარინადი": 50, "მარცვლეული და ბურღულეული": 150, "მაწონი": 300,
-        "მწვანილები": 50, "ნახევარფაბრიკატები": 150, "ნედლი ხორცი": 250,
-        "პურ-ფუნთუშეული": 150, "რძე & ნაღები": 300, "რძის სიკვიტი": 60,
-        "სასმელები": 700, "საქონელი": 250, "საცხობი საშუალებები": 25,
-        "სიმინდის ფანტელი": 100, "სნექი": 60, "სწრაფად მოსამზადებელი საკვები": 120,
-        "ტკბილეული და ნაყინი": 60, "ფანტელი და მიუსელი": 100,
-        "ფარშრებული": 250, "ქათამი": 250, "ღორი": 200, "ყველი": 100,
-        "შაქარი": 30, "შებოლილი თევზი": 120, "შესქელებული რძე": 50,
-        "ციტრუსი": 350, "ძეხვეული": 120, "ძმარი": 20, "ხილი": 350,
-    },
-}
+# ══════════════════════════════════════════════════════════════
+# კატეგორიების ჯგუფები
+# ══════════════════════════════════════════════════════════════
+GROUP_A = ["ბოსტნეული", "მწვანილები", "ხილი", "ციტრუსი"]
+GROUP_B = ["მაკარონი", "მარცვლეული და ბურღულეული", "პურ-ფუნთუშეული",
+           "ფანტელი და მიუსელი", "სიმინდის ფანტელი"]
+GROUP_C = ["ქათამი", "ნედლი ხორცი", "საქონელი", "ღორი", "ფარშრებული",
+           "გაყინული თევზი", "ზღვის პროდუქტები", "შებოლილი თევზი",
+           "კვერცხი", "კონსერვები"]
+GROUP_D = ["იოგურტი & პუდიგრი", "მაწონი", "კეფირი & აირანი",
+           "რძე & ნაღები", "ყველი", "რძის სიკვიტი"]
+GROUP_E = ["არაჟანი", "კარაქი & სპრედი", "მაიონეზი & სოუსები",
+           "შაქარი", "თაფლი, მურაბა & ჯემი", "ტკბილეული და ნაყინი",
+           "შესქელებული რძე", "ძეხვეული", "სნექი",
+           "სწრაფად მოსამზადებელი საკვები"]
+GROUP_F = ["მარილი", "მარინადი", "ძმარი", "საცხობი საშუალებები", "სასმელები"]
 
-PRIORITY_CATS = [
-    ["ქათამი", "ნედლი ხორცი", "საქონელი", "ფარშრებული", "ღორი"],
-    ["მარცვლეული და ბურღულეული"],
-    ["კვერცხი"],
-    ["ბოსტნეული"],
-    ["ხილი", "ციტრუსი"],
-    ["მაწონი", "იოგურტი & პუდიგრი", "კეფირი & აირანი"],
-    ["პურ-ფუნთუშეული"],
-    ["მაკარონი"],
-    ["ყველი"],
-    ["კონსერვები"],
-    ["რძე & ნაღები"],
-    ["კარაქი & სპრედი"],
-    ["ძეხვეული"],
-    ["გაყინული თევზი", "შებოლილი თევზი", "ზღვის პროდუქტები"],
-    ["ფანტელი და მიუსელი", "სიმინდის ფანტელი"],
-]
+def cat_group(cat: str) -> str:
+    if cat in GROUP_A: return "A"
+    if cat in GROUP_B: return "B"
+    if cat in GROUP_C: return "C"
+    if cat in GROUP_D: return "D"
+    if cat in GROUP_E: return "E"
+    if cat in GROUP_F: return "F"
+    return "C"  # default
 
-def get_limit_key(cal: float) -> str:
-    if cal <= 1000: return "500-1000"
-    elif cal <= 1500: return "1000-1500"
-    elif cal <= 2500: return "1500-2500"
-    else: return "2500+"
+# ══════════════════════════════════════════════════════════════
+# ფორმულები
+# ══════════════════════════════════════════════════════════════
 
-def get_max_g(cat: str, cal: float) -> float:
-    return float(LIMITS[get_limit_key(cal)].get(cat, 100))
+def calc_n(K: float) -> int:
+    """პროდუქტების რაოდენობა"""
+    return min(8, max(2, math.floor(K / 500) + 2))
+
+def calc_min_max(group: str, K: float) -> tuple:
+    """min/max გრამები ჯგუფის მიხედვით"""
+    if group == "A":
+        return max(100, K * 0.08), min(400, K * 0.18)
+    elif group == "B":
+        return max(40, K * 0.04), min(150, K * 0.08)
+    elif group == "C":
+        return max(80, K * 0.05), min(250, K * 0.10)
+    elif group == "D":
+        return max(100, K * 0.05), min(300, K * 0.10)
+    elif group == "E":
+        return max(5, K * 0.01), min(50, K * 0.03)
+    elif group == "F":
+        return 3, 30
+    return max(50, K * 0.04), min(200, K * 0.10)
+
+def get_groups_for_n(N: int) -> list:
+    """კატეგორიების ჯგუფები N-ის მიხედვით"""
+    groups = []
+    if N >= 2:
+        groups += ["B", "C"]
+    if N >= 3:
+        groups += ["A"]
+    if N >= 4:
+        groups += ["D"]
+    if N >= 5:
+        groups += ["A"]  # დამატებითი A ან C ან B
+    if N >= 6:
+        groups += ["D"]  # დამატებითი A ან D
+    if N >= 7:
+        groups += ["E"]  # მაქს 1 E
+    if N >= 8:
+        groups += ["C"]  # დამატებითი ცილა
+    return groups[:N]
+
+# ══════════════════════════════════════════════════════════════
+# დამხმარე ფუნქციები
+# ══════════════════════════════════════════════════════════════
 
 def get_pkg_weight(row) -> float:
     return float(row["total_package_weight"]) if float(row["total_package_weight"]) > 0 else 500.0
@@ -131,23 +114,24 @@ def price_per_gram(row) -> float:
     w = float(row.get("weight", 1000) or 1000)
     return float(row["price"]) / w
 
-def resolve(row, wanted: float, max_g: float):
+def resolve(row, wanted: float, min_g: float, max_g: float):
     if row["sale_type"] == "package_pieces":
         pkg = get_pkg_weight(row)
         use = min(wanted, pkg * PKG_MAX_RATIO, max_g)
-        use = max(round(use), 1)
+        use = max(round(use), max(1, round(min_g)))
         price = float(row["price"])
         pct = round((use / pkg) * 100)
-        note = f"🛒 შეიძინე 1 შეკვრა — {pkg:.0f}გ · {price:.2f}₾  |  ✂️ გამოიყენე: {use}გ ({pct}%)"
+        note = (f"🛒 შეიძინე 1 შეკვრა — {pkg:.0f}გ · {price:.2f}₾  |  "
+                f"✂️ გამოიყენე: {use}გ ({pct}%)")
         return use, price, note
     else:
-        grams = max(1, min(round(wanted), int(max_g)))
+        grams = max(round(min_g), min(round(wanted), round(max_g)))
         w = float(row.get("weight", 1000) or 1000)
         price = round((float(row["price"]) / w) * grams, 2)
         return grams, price, None
 
-def make_item(row, wanted: float, max_g: float) -> dict:
-    grams, price, note = resolve(row, wanted, max_g)
+def make_item(row, wanted: float, min_g: float, max_g: float) -> dict:
+    grams, price, note = resolve(row, wanted, min_g, max_g)
     f = grams / 100.0
     return {
         "id": int(row["id"]),
@@ -163,6 +147,7 @@ def make_item(row, wanted: float, max_g: float) -> dict:
         "is_promo": bool(row["is_promo"]),
         "pkg_note": note,
         "pkg_total_weight": get_pkg_weight(row) if row["sale_type"] == "package_pieces" else None,
+        "owned": False,
     }
 
 def pick_cheapest(df, cats, used_ids):
@@ -177,64 +162,44 @@ def pick_cheapest(df, cats, used_ids):
     sub["ppg"] = sub.apply(price_per_gram, axis=1)
     return sub.nsmallest(1, "ppg").iloc[0]
 
-def build_basket(df, target_cal, target_p, target_f, target_c):
-    """კალათის აგება პრიორიტეტების მიხედვით"""
-    basket = []
-    used_ids = set()
-    total_cal = total_p = total_f = total_c = total_price = 0.0
-    remaining = target_cal
+def get_cats_for_group(group: str) -> list:
+    mapping = {"A": GROUP_A, "B": GROUP_B, "C": GROUP_C,
+               "D": GROUP_D, "E": GROUP_E, "F": GROUP_F}
+    return mapping.get(group, GROUP_C)
 
-    for cats in PRIORITY_CATS:
-        if remaining < target_cal * 0.02:
-            break
-        row = pick_cheapest(df, cats, used_ids)
-        if row is None:
-            continue
-        cal100 = float(row["calories"])
-        if cal100 <= 0:
-            continue
-        cat = row["category"]
-        max_g = get_max_g(cat, target_cal)
-        # გამოთვალე რამდენი გრამი გვჭირდება remaining-ისთვის
-        wanted = (remaining / cal100) * 100.0
-        # შეზღუდე max_g-ით
-        wanted = min(wanted, max_g)
-        item = make_item(row, wanted, max_g)
-        if item["calories"] < 1:
-            continue
-        basket.append(item)
-        used_ids.add(item["id"])
-        total_cal += item["calories"]
-        total_p += item["protein"]
-        total_f += item["fat"]
-        total_c += item["carbs"]
-        total_price += item["price"]
-        remaining -= item["calories"]
-
-    return basket, used_ids, total_cal, total_p, total_f, total_c, total_price
-
-def balance_calories(basket, df, target_cal, total_cal, total_p, total_f, total_c, total_price):
-    """კალორიების ზუსტი დაბალანსება — გაზრდა ან შემცირება"""
-    for _ in range(10):
+def balance_to_target(basket, df, target_cal, total_cal, total_p, total_f, total_c, total_price, target_cal_orig):
+    """კალორიების ზუსტი დაბალანსება"""
+    for _ in range(15):
         cal_diff = target_cal - total_cal
-        if abs(cal_diff) <= target_cal * 0.01:
+        if abs(cal_diff) <= target_cal * 0.005:
             break
         improved = False
-        # ვეძებთ წონით პროდუქტს გამოსასწორებლად
         for i, item in enumerate(basket):
             row_df = df[df["id"] == item["id"]]
             if row_df.empty:
                 continue
             row = row_df.iloc[0]
-            if row["sale_type"] != "weight" or float(row["calories"]) <= 0:
+            if float(row["calories"]) <= 0:
                 continue
-            max_g = get_max_g(row["category"], target_cal)
+            grp = cat_group(row["category"])
+            mn, mx = calc_min_max(grp, target_cal_orig)
+            if row["sale_type"] == "package_pieces":
+                pkg = get_pkg_weight(row)
+                mx = min(mx, pkg * PKG_MAX_RATIO)
+            if cal_diff > 0 and item["grams"] >= mx:
+                continue
+            if cal_diff < 0 and item["grams"] <= mn:
+                continue
             extra = (cal_diff / float(row["calories"])) * 100.0
             new_grams = item["grams"] + extra
-            new_grams = max(1.0, min(new_grams, max_g))
+            # weight პროდუქტისთვის ლიმიტის გარეშე თუ საჭიროა
+            if row["sale_type"] == "weight":
+                new_grams = max(1.0, new_grams)
+            else:
+                new_grams = max(mn, min(new_grams, mx))
             if abs(new_grams - item["grams"]) < 0.5:
                 continue
-            new_item = make_item(row, new_grams, max_g)
+            new_item = make_item(row, new_grams, mn, new_grams + 1 if row["sale_type"] == "weight" else mx)
             total_cal += new_item["calories"] - item["calories"]
             total_p += new_item["protein"] - item["protein"]
             total_f += new_item["fat"] - item["fat"]
@@ -246,6 +211,10 @@ def balance_calories(basket, df, target_cal, total_cal, total_p, total_f, total_
         if not improved:
             break
     return basket, total_cal, total_p, total_f, total_c, total_price
+
+# ══════════════════════════════════════════════════════════════
+# endpoints
+# ══════════════════════════════════════════════════════════════
 
 @router.post("/optimize")
 def optimize_basket(req: BasketRequest):
@@ -267,41 +236,100 @@ def optimize_basket(req: BasketRequest):
         target_f = req.fat or 0
         target_c = req.carbs or 0
         target_cal = (target_p * 4) + (target_f * 9) + (target_c * 4)
+        if target_cal < 10:
+            raise HTTPException(status_code=400, detail="მაკრო მნიშვნელობები ძალიან დაბალია")
     else:
         raise HTTPException(status_code=400, detail="Invalid input")
 
-    basket, used_ids, total_cal, total_p, total_f, total_c, total_price = build_basket(
-        df, target_cal, target_p, target_f, target_c
-    )
+    N = calc_n(target_cal)
+    groups = get_groups_for_n(N)
+
+    basket = []
+    used_ids = set()
+    used_groups = {}
+    total_cal = total_p = total_f = total_c = total_price = 0.0
+    remaining = target_cal
+
+    for grp in groups:
+        if remaining < target_cal * 0.01:
+            break
+        cats = get_cats_for_group(grp)
+        # ფილტრი — მხოლოდ ხელმისაწვდომი კატეგორიები
+        avail_cats = [c for c in cats if c in df["category"].values]
+        if not avail_cats:
+            continue
+        row = pick_cheapest(df, avail_cats, used_ids)
+        if row is None:
+            continue
+        cal100 = float(row["calories"])
+        if cal100 <= 0:
+            continue
+        mn, mx = calc_min_max(grp, target_cal)
+        # გრამები remaining კალორიებიდან
+        wanted = (remaining / cal100) * 100.0
+        wanted = max(mn, min(wanted, mx))
+        item = make_item(row, wanted, mn, mx)
+        if item["calories"] < 1:
+            continue
+        basket.append(item)
+        used_ids.add(item["id"])
+        used_groups[grp] = used_groups.get(grp, 0) + 1
+        total_cal += item["calories"]
+        total_p += item["protein"]
+        total_f += item["fat"]
+        total_c += item["carbs"]
+        total_price += item["price"]
+        remaining -= item["calories"]
 
     if not basket:
         raise HTTPException(status_code=422, detail="Could not build basket")
 
-    # დაბალანსება
-    basket, total_cal, total_p, total_f, total_c, total_price = balance_calories(
-        basket, df, target_cal, total_cal, total_p, total_f, total_c, total_price
+    # კალორიების დაბალანსება
+    basket, total_cal, total_p, total_f, total_c, total_price = balance_to_target(
+        basket, df, target_cal, total_cal, total_p, total_f, total_c, total_price, target_cal
     )
 
-    # თუ კვლავ ბევრი სხვაობაა — მეორე pass, ლიმიტების გარეშე
-    if abs(target_cal - total_cal) > target_cal * 0.02:
-        for i, item in enumerate(basket):
-            row_df = df[df["id"] == item["id"]]
-            if row_df.empty:
+    # თუ კვლავ სხვაობაა — დამატებითი პროდუქტი
+    cal_diff = target_cal - total_cal
+    if abs(cal_diff) > target_cal * 0.02 and cal_diff > 0:
+        for grp in ["B", "C", "A"]:
+            cats = get_cats_for_group(grp)
+            row = pick_cheapest(df, cats, used_ids)
+            if row is None:
                 continue
-            row = row_df.iloc[0]
-            if row["sale_type"] != "weight" or float(row["calories"]) <= 0:
+            cal100 = float(row["calories"])
+            if cal100 <= 0:
                 continue
-            cal_diff = target_cal - total_cal
-            extra = (cal_diff / float(row["calories"])) * 100.0
-            new_grams = max(1.0, item["grams"] + extra)
-            new_item = make_item(row, new_grams, new_grams + 1)
-            total_cal += new_item["calories"] - item["calories"]
-            total_p += new_item["protein"] - item["protein"]
-            total_f += new_item["fat"] - item["fat"]
-            total_c += new_item["carbs"] - item["carbs"]
-            total_price += new_item["price"] - item["price"]
-            basket[i] = new_item
+            mn, mx = calc_min_max(grp, target_cal)
+            wanted = (cal_diff / cal100) * 100.0
+            wanted = max(mn, min(wanted, mx))
+            item = make_item(row, wanted, mn, mx)
+            if item["calories"] < 1:
+                continue
+            basket.append(item)
+            used_ids.add(item["id"])
+            total_cal += item["calories"]
+            total_p += item["protein"]
+            total_f += item["fat"]
+            total_c += item["carbs"]
+            total_price += item["price"]
             break
+
+    # მაკრო ვალიდაცია
+    if req.mode == "macros":
+        p_diff = abs(total_p - target_p) / target_p if target_p > 0 else 0
+        f_diff = abs(total_f - target_f) / target_f if target_f > 0 else 0
+        c_diff = abs(total_c - target_c) / target_c if target_c > 0 else 0
+        if p_diff > 0.30 or f_diff > 0.30 or c_diff > 0.30:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"კალათის შედგენა ამ პარამეტრებით შეუძლებელია. "
+                    f"მიღებული: ცილა {round(total_p)}გ/{round(target_p)}გ, "
+                    f"ცხიმი {round(total_f)}გ/{round(target_f)}გ, "
+                    f"ნახ {round(total_c)}გ/{round(target_c)}გ"
+                )
+            )
 
     return {
         "basket": basket,
@@ -341,47 +369,106 @@ def rebalance_basket(req: RebalanceRequest):
             "message": f"⚠️ ამ პროდუქტის წაშლით კარგავთ კალორიების {round(deficit_pct*100)}%-ს. გირჩევთ ახალი კალათის გენერაციას."
         }
     df = load_products()
-    scale = min(target_cal / current_cal, 1.5) if current_cal > 0 else 1.0
     new_basket = []
+    total_cal = total_p = total_f = total_c = total_price = 0.0
+    scale = target_cal / current_cal if current_cal > 0 else 1.0
+    scale = min(scale, 1.5)
     for item in remaining:
         row_df = df[df["id"] == item["id"]]
         if row_df.empty:
             new_basket.append(item)
+            total_cal += item["calories"]
+            total_p += item["protein"]
+            total_f += item["fat"]
+            total_c += item["carbs"]
+            total_price += item["price"]
             continue
         row = row_df.iloc[0]
-        max_g = get_max_g(row["category"], target_cal)
-        new_item = make_item(row, item["grams"] * scale, max_g)
+        grp = cat_group(row["category"])
+        mn, mx = calc_min_max(grp, target_cal)
+        new_grams = item["grams"] * scale
+        new_item = make_item(row, new_grams, mn, new_grams + 1)
+        new_item["owned"] = item.get("owned", False)
         new_basket.append(new_item)
+        total_cal += new_item["calories"]
+        total_p += new_item["protein"]
+        total_f += new_item["fat"]
+        total_c += new_item["carbs"]
+        total_price += new_item["price"] if not new_item.get("owned") else 0
+
     totals = {
-        "price": round(sum(i["price"] for i in new_basket), 2),
-        "protein": round(sum(i["protein"] for i in new_basket), 1),
-        "fat": round(sum(i["fat"] for i in new_basket), 1),
-        "carbs": round(sum(i["carbs"] for i in new_basket), 1),
-        "calories": round(sum(i["calories"] for i in new_basket), 1),
+        "price": round(sum(i["price"] for i in new_basket if not i.get("owned")), 2),
+        "protein": round(total_p, 1),
+        "fat": round(total_f, 1),
+        "carbs": round(total_c, 1),
+        "calories": round(total_cal, 1),
     }
     return {"basket": new_basket, "totals": totals, "message": None}
 
 @router.post("/replace")
 def replace_product(req: ReplaceRequest):
+    """
+    პროდუქტის შეცვლა:
+    - new_category: თუ მითითებულია, სხვა კატეგორიით ჩაანაცვლებს
+    - sort_by_price: asc (ყველაზე იაფი) ან desc (შემდეგი ძვირი)
+    - target_calories: ზუსტი კალორიების შეცვლა
+    """
     df = load_products()
     product_row = df[df["id"] == req.product_id]
     if product_row.empty:
         raise HTTPException(status_code=404, detail="Product not found")
     original = product_row.iloc[0]
-    same_cat = df[
-        (df["category"] == original["category"]) &
+
+    # კატეგორია — ახალი ან იგივე
+    search_cat = req.new_category if req.new_category else original["category"]
+    grp = cat_group(search_cat)
+    target_cal = req.target_calories or float(original["calories"])
+
+    candidates = df[
+        (df["category"] == search_cat) &
         (df["id"] != req.product_id) &
         (~df["id"].isin(req.excluded_ids)) &
         (df["calories"] > 5)
     ].copy()
-    if same_cat.empty:
-        same_cat = df[
-            (df["id"] != req.product_id) &
-            (~df["id"].isin(req.excluded_ids)) &
-            (df["calories"] > 5)
-        ].copy()
-    if same_cat.empty:
-        raise HTTPException(status_code=404, detail="No replacement found")
-    same_cat["ppg"] = same_cat.apply(price_per_gram, axis=1)
-    best = same_cat.nsmallest(1, "ppg").iloc[0]
-    return {"replacement": df_to_dict(pd.DataFrame([best]))[0]}
+
+    if candidates.empty:
+        raise HTTPException(status_code=404, detail="No replacement found in this category")
+
+    candidates["ppg"] = candidates.apply(price_per_gram, axis=1)
+
+    if req.sort_by_price == "asc":
+        best = candidates.nsmallest(1, "ppg").iloc[0]
+    else:
+        # შემდეგი ძვირი — ამჟამინდელზე ძვირი
+        orig_ppg = price_per_gram(original)
+        pricier = candidates[candidates["ppg"] > orig_ppg]
+        if pricier.empty:
+            best = candidates.nlargest(1, "ppg").iloc[0]
+        else:
+            best = pricier.nsmallest(1, "ppg").iloc[0]
+
+    # გრამები კალორიების შესაბამისად
+    cal100 = float(best["calories"])
+    if cal100 > 0 and target_cal > 0:
+        wanted = (target_cal / cal100) * 100.0
+    else:
+        mn, mx = calc_min_max(grp, target_cal * 10)
+        wanted = (mn + mx) / 2
+
+    mn, mx = calc_min_max(grp, target_cal * 10)
+    item = make_item(best, wanted, mn, wanted + 1)
+
+    return {"replacement": item}
+
+@router.get("/categories_list")
+def get_all_categories():
+    """ყველა კატეგორია ჯგუფების მიხედვით"""
+    df = load_products()
+    cats = sorted(df["category"].unique().tolist())
+    result = {}
+    for cat in cats:
+        grp = cat_group(cat)
+        if grp not in result:
+            result[grp] = []
+        result[grp].append(cat)
+    return {"groups": result, "categories": cats}
