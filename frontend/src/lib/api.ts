@@ -8,7 +8,6 @@ export const api = axios.create({
   timeout: 35000,
 });
 
-// Attach access token
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('fitprice_token');
@@ -17,7 +16,6 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Auto-refresh on 401
 api.interceptors.response.use(
   (res) => res,
   async (error) => {
@@ -38,16 +36,36 @@ api.interceptors.response.use(
   }
 );
 
-// Basket API
 export const basketApi = {
-  optimize: (data: any) => api.post('/basket/optimize', data),
-  replace: (product_id: number, excluded_ids: number[]) =>
-    api.post('/basket/replace', { product_id, excluded_ids }),
+  optimize: (data: any) =>
+    api.post('/basket/optimize', data),
+
+  replace: (
+    product_id: number,
+    excluded_ids: number[],
+    target_calories?: number,
+    new_category?: string,
+    sort_by_price: 'asc' | 'desc' = 'asc'
+  ) =>
+    api.post('/basket/replace', {
+      product_id,
+      excluded_ids,
+      target_calories,
+      new_category,
+      sort_by_price,
+    }),
+
+  rebalance: (
+    basket: any[],
+    removed_id: number,
+    target_calories?: number
+  ) =>
+    api.post('/basket/rebalance', { basket, removed_id, target_calories }),
+
   categories: () => api.get('/basket/categories'),
   promos: () => api.get('/basket/promos'),
 };
 
-// Nutrition API
 export const nutritionApi = {
   calculate: (data: any) => api.post('/nutrition/calculate', data),
   recipe: (basket: any[], meal_name?: string, calories_target?: number) =>
@@ -56,16 +74,15 @@ export const nutritionApi = {
   profile: () => api.get('/nutrition/profile'),
 };
 
-// Auth API
 export const authApi = {
-  login: (email: string, password: string) => api.post('/auth/login', { email, password }),
+  login: (email: string, password: string) =>
+    api.post('/auth/login', { email, password }),
   register: (email: string, password: string, name: string) =>
     api.post('/auth/register', { email, password, name }),
   logout: () => api.post('/auth/logout'),
   me: () => api.get('/auth/me'),
 };
 
-// Ads API
 export const adsApi = {
   list: () => api.get('/ads'),
 };
