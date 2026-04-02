@@ -12,6 +12,9 @@ export interface BasketItem {
   calories: number;
   sale_type: string;
   is_promo: boolean;
+  pkg_note?: string | null;
+  pkg_total_weight?: number | null;
+  owned?: boolean;
 }
 
 export interface BasketTotals {
@@ -22,53 +25,60 @@ export interface BasketTotals {
   calories: number;
 }
 
-interface BasketState {
+interface BasketStore {
   basket: BasketItem[];
   totals: BasketTotals | null;
   targets: BasketTotals | null;
   isLoading: boolean;
   setBasket: (basket: BasketItem[], totals: BasketTotals, targets: BasketTotals) => void;
+  setLoading: (v: boolean) => void;
   replaceItem: (oldId: number, newItem: BasketItem) => void;
   removeItem: (id: number) => void;
-  setLoading: (v: boolean) => void;
-  reset: () => void;
+  updateItem: (id: number, updated: BasketItem) => void;
+  clearBasket: () => void;
 }
 
-export const useBasketStore = create<BasketState>((set, get) => ({
+export const useBasketStore = create<BasketStore>((set, get) => ({
   basket: [],
   totals: null,
   targets: null,
   isLoading: false,
 
   setBasket: (basket, totals, targets) => set({ basket, totals, targets }),
+  setLoading: (v) => set({ isLoading: v }),
 
   replaceItem: (oldId, newItem) => {
-    const basket = get().basket.map((item) => (item.id === oldId ? newItem : item));
-    // Recalculate totals
-    const totals = basket.reduce(
-      (acc, item) => ({
-        price: acc.price + item.price,
-        protein: acc.protein + item.protein,
-        fat: acc.fat + item.fat,
-        carbs: acc.carbs + item.carbs,
-        calories: acc.calories + item.calories,
-      }),
-      { price: 0, protein: 0, fat: 0, carbs: 0, calories: 0 }
+    const basket = get().basket.map(item =>
+      item.id === oldId ? newItem : item
     );
-    set({ basket, totals: {
-      price: Math.round(totals.price * 100) / 100,
-      protein: Math.round(totals.protein * 10) / 10,
-      fat: Math.round(totals.fat * 10) / 10,
-      carbs: Math.round(totals.carbs * 10) / 10,
-      calories: Math.round(totals.calories * 10) / 10,
-    }});
+    const totals = calcTotals(basket);
+    set({ basket, totals });
   },
 
   removeItem: (id) => {
-    const basket = get().basket.filter((item) => item.id !== id);
-    set({ basket });
+    const basket = get().basket.filter(item => item.id !== id);
+    const totals = calcTotals(basket);
+    set({ basket, totals });
   },
 
-  setLoading: (v) => set({ isLoading: v }),
-  reset: () => set({ basket: [], totals: null, targets: null }),
+  updateItem: (id, updated) => {
+    const basket = get().basket.map(item =>
+      item.id === id ? updated : item
+    );
+    // totals-ში owned პროდუქტების კალორიები ითვლება, მაგრამ ფასი არა
+    const totals = calcTotals(basket);
+    set({ basket, totals });
+  },
+
+  clearBasket: () => set({ basket: [], totals: null, targets: null }),
 }));
+
+function calcTotals(basket: BasketItem[]): BasketTotals {
+  return {
+    price: basket.filter(i => !i.owned).reduce((s, i) => s + i.price, 0),
+    protein: basket.reduce((s, i) => s + i.protein, 0),
+    fat: basket.reduce((s, i) => s + i.fat, 0),
+    carbs: basket.reduce((s, i) => s + i.carbs, 0),
+    calories: basket.reduce((s, i) => s + i.calories, 0),
+  };
+}
