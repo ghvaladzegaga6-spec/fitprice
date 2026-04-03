@@ -1,8 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Calculator, ShoppingCart, Gift, Filter, RefreshCw, ChefHat } from 'lucide-react';
+import { Calculator, ShoppingCart, Gift, Filter, ChefHat, Leaf } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { basketApi, nutritionApi } from '@/lib/api';
+import { basketApi } from '@/lib/api';
 import { useBasketStore } from '@/store/basket.store';
 import { BasketCalculator } from '@/components/basket/BasketCalculator';
 import { BasketResults } from '@/components/basket/BasketResults';
@@ -10,6 +10,7 @@ import { CategoryFilter } from '@/components/basket/CategoryFilter';
 import { PromoPopup } from '@/components/basket/PromoPopup';
 import { AdsRotator } from '@/components/AdsRotator';
 import { RecipeModal } from '@/components/basket/RecipeModal';
+import { clsx } from 'clsx';
 
 export default function BasketPage() {
   const { basket, totals, targets, isLoading, setBasket, setLoading } = useBasketStore();
@@ -19,10 +20,15 @@ export default function BasketPage() {
   const [showFilter, setShowFilter] = useState(false);
   const [showRecipe, setShowRecipe] = useState(false);
   const [forcePromo, setForcePromo] = useState<number[]>([]);
+  const [veganMode, setVeganMode] = useState(false);
 
   useEffect(() => {
-    basketApi.categories().then(({ data }) => setCategories(data.categories));
-  }, []);
+    if (veganMode) {
+      basketApi.veganCategories().then(({ data }) => setCategories(data.categories));
+    } else {
+      basketApi.categories().then(({ data }) => setCategories(data.categories));
+    }
+  }, [veganMode]);
 
   const handleOptimize = async (formData: any) => {
     setLoading(true);
@@ -31,12 +37,14 @@ export default function BasketPage() {
         ...formData,
         excluded_categories: excludedCats,
         force_promo: forcePromo,
+        vegan_only: veganMode,
       };
       const { data } = await basketApi.optimize(payload);
       setBasket(data.basket, data.totals, data.targets);
       toast.success(`კალათი გენერირდა! ✅ სულ: ${data.totals.price.toFixed(2)}₾`);
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'შეცდომა ოპტიმიზაციაში');
+      const msg = err.response?.data?.detail || err.response?.data?.error || 'შეცდომა ოპტიმიზაციაში';
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -51,6 +59,24 @@ export default function BasketPage() {
           <p className="text-sm text-gray-500 mt-0.5">შეიყვანეთ კალორიები ან მაკროები — სისტემა გაგიჩენს ყველაზე იაფ კომბინაციას</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* ვეგანური ღილაკი */}
+          <button
+            onClick={() => {
+              setVeganMode(!veganMode);
+              setExcludedCats([]);
+              toast.success(veganMode ? '🥩 ჩვეულებრივი რეჟიმი' : '🌱 ვეგანური რეჟიმი');
+            }}
+            className={clsx(
+              'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all border',
+              veganMode
+                ? 'bg-green-500 text-white border-green-500 shadow-md'
+                : 'bg-white text-green-700 border-green-300 hover:bg-green-50'
+            )}
+          >
+            <Leaf size={15} />
+            <span className="hidden sm:inline">ვეგანური</span>
+          </button>
+
           <button
             onClick={() => setShowFilter(!showFilter)}
             className="btn-secondary flex items-center gap-2 text-sm"
@@ -72,6 +98,14 @@ export default function BasketPage() {
           </button>
         </div>
       </div>
+
+      {/* ვეგანური ბანერი */}
+      {veganMode && (
+        <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800">
+          <Leaf size={16} className="text-green-600 shrink-0" />
+          <span>🌱 ვეგანური რეჟიმი ჩართულია — მხოლოდ მცენარეული პროდუქტები</span>
+        </div>
+      )}
 
       {/* Category Filter */}
       {showFilter && (
@@ -95,8 +129,6 @@ export default function BasketPage() {
             </div>
             <BasketCalculator onSubmit={handleOptimize} isLoading={isLoading} />
           </div>
-
-          {/* Ads */}
           <AdsRotator />
         </div>
 
@@ -109,6 +141,9 @@ export default function BasketPage() {
                   <ShoppingCart size={18} className="text-primary-600" />
                   <h2 className="font-semibold text-gray-900">კვების კალათი</h2>
                   <span className="tag bg-primary-50 text-primary-700">{basket.length} პროდუქტი</span>
+                  {veganMode && (
+                    <span className="tag bg-green-50 text-green-700 text-[10px]">🌱 ვეგანური</span>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowRecipe(true)}
@@ -133,7 +168,6 @@ export default function BasketPage() {
         </div>
       </div>
 
-      {/* Promo Popup */}
       {showPromo && (
         <PromoPopup
           onClose={() => setShowPromo(false)}
@@ -141,7 +175,6 @@ export default function BasketPage() {
         />
       )}
 
-      {/* Recipe Modal */}
       {showRecipe && (
         <RecipeModal
           basket={basket}
