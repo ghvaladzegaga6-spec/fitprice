@@ -3,8 +3,12 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Brain, Loader2, Droplets, Utensils, Calendar, AlertTriangle, TrendingDown, TrendingUp, Minus, Activity } from 'lucide-react';
-import { nutritionApi } from '@/lib/api';
+import { Brain, Loader2, Droplets, Utensils, Calendar, AlertTriangle, TrendingDown, TrendingUp, Minus, Activity, ShoppingCart, ChefHat, Filter, Gift, Leaf } from 'lucide-react';
+import { nutritionApi, basketApi } from '@/lib/api';
+import { useBasketStore } from '@/store/basket.store';
+import { BasketResults } from '@/components/basket/BasketResults';
+import { CategoryFilter } from '@/components/basket/CategoryFilter';
+import { RecipeModal } from '@/components/basket/RecipeModal';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 
@@ -37,6 +41,14 @@ const GOAL_CONFIG = {
 export default function PersonalizationPage() {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [basketLoading, setBasketLoading] = useState(false);
+  const [showFilter, setShowFilter] = useState(false);
+  const [showRecipe, setShowRecipe] = useState(false);
+  const [excludedCats, setExcludedCats] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [veganMode, setVeganMode] = useState(false);
+
+  const { basket, totals, targets, setBasket, setLoading: setBasketStoreLoading } = useBasketStore();
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -50,12 +62,41 @@ export default function PersonalizationPage() {
     try {
       const { data: res } = await nutritionApi.calculate(data);
       setResult(res);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // კატეგორიების ჩატვირთვა
+      basketApi.categories().then(({ data: c }) => setCategories(c.categories));
       toast.success('გათვლა დასრულდა! ✅');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'შეცდომა გათვლაში');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateBasket = async () => {
+    if (!result) return;
+    setBasketLoading(true);
+    setBasketStoreLoading(true);
+    try {
+      const payload = {
+        mode: 'calories',
+        calories: result.adjusted_calories,
+        calorie_ratio: {
+          protein: result.macros.protein * 4 / result.adjusted_calories,
+          fat: result.macros.fat * 9 / result.adjusted_calories,
+          carbs: result.macros.carbs * 4 / result.adjusted_calories,
+        },
+        excluded_categories: excludedCats,
+        vegan_only: veganMode,
+      };
+      const { data } = await basketApi.optimize(payload);
+      setBasket(data.basket, data.totals, data.targets);
+      toast.success(`კალათი გენერირდა! სულ: ${data.totals.price.toFixed(2)}₾`);
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.response?.data?.error || 'შეცდომა';
+      toast.error(msg);
+    } finally {
+      setBasketLoading(false);
+      setBasketStoreLoading(false);
     }
   };
 
@@ -108,9 +149,6 @@ export default function PersonalizationPage() {
                       placeholder={placeholder}
                       {...register(name as any, { valueAsNumber: true })}
                     />
-                    {errors[name as keyof typeof errors] && (
-                      <p className="text-red-500 text-[10px] mt-0.5">სავალდებულო</p>
-                    )}
                   </div>
                 ))}
               </div>
@@ -145,7 +183,6 @@ export default function PersonalizationPage() {
                 </div>
               </div>
 
-              {/* Target weight */}
               {(goal === 'lose' || goal === 'gain') && (
                 <div>
                   <label className="label">სამიზნე წონა (კგ) — სურვილისამებრ</label>
@@ -169,7 +206,6 @@ export default function PersonalizationPage() {
         <div className="lg:col-span-3 space-y-4">
           {result ? (
             <>
-              {/* Warning */}
               {result.warning && (
                 <div className="flex items-start gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
                   <AlertTriangle size={18} className="text-yellow-600 shrink-0 mt-0.5" />
@@ -206,9 +242,9 @@ export default function PersonalizationPage() {
                 <h3 className="font-semibold text-gray-900 mb-4">მაკროელემენტები (დღიური)</h3>
                 <div className="space-y-3">
                   {[
-                    { label: 'ცილა', val: result.macros.protein, max: result.macros.protein, color: 'bg-blue-400', unit: 'გ' },
-                    { label: 'ნახშირწყლები', val: result.macros.carbs, max: result.macros.carbs, color: 'bg-green-400', unit: 'გ' },
-                    { label: 'ცხიმი', val: result.macros.fat, max: result.macros.fat, color: 'bg-yellow-400', unit: 'გ' },
+                    { label: 'ცილა', val: result.macros.protein, color: 'bg-blue-400', unit: 'გ' },
+                    { label: 'ნახშირწყლები', val: result.macros.carbs, color: 'bg-green-400', unit: 'გ' },
+                    { label: 'ცხიმი', val: result.macros.fat, color: 'bg-yellow-400', unit: 'გ' },
                   ].map(({ label, val, color, unit }) => {
                     const total = result.macros.protein + result.macros.carbs + result.macros.fat;
                     const pct = Math.round((val / total) * 100);
@@ -219,7 +255,7 @@ export default function PersonalizationPage() {
                           <span className="text-gray-500">{val}{unit} <span className="text-gray-400 text-xs">({pct}%)</span></span>
                         </div>
                         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className={`h-full ${color} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
+                          <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
                         </div>
                       </div>
                     );
@@ -227,7 +263,7 @@ export default function PersonalizationPage() {
                 </div>
               </div>
 
-              {/* Water + Timeline */}
+              {/* Water */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="card text-center">
                   <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2">
@@ -235,9 +271,7 @@ export default function PersonalizationPage() {
                   </div>
                   <div className="font-bold text-xl text-blue-600">{result.water_ml} მლ</div>
                   <div className="text-xs text-gray-400 mt-0.5">წყალი დღეში</div>
-                  <div className="text-xs text-gray-500 mt-1">{(result.water_ml / 1000).toFixed(1)} ლიტრი</div>
                 </div>
-
                 {result.timeline && (
                   <div className="card text-center">
                     <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center mx-auto mb-2">
@@ -245,42 +279,92 @@ export default function PersonalizationPage() {
                     </div>
                     <div className="font-bold text-xl text-primary-600">{result.timeline}</div>
                     <div className="text-xs text-gray-400 mt-0.5">სამიზნე დრო</div>
-                    <div className="text-xs text-gray-500 mt-1">{result.weekly_rate_kg} კგ/კვირა</div>
                   </div>
                 )}
               </div>
 
-              {/* Meal Plan */}
-              <div className="card">
-                <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Utensils size={16} className="text-primary-600" />
-                  კვების გეგმა ({result.meals_per_day} კვება/დღე)
+              {/* კალათის გენერაცია */}
+              <div className="card border-2 border-primary-100 bg-primary-50/30">
+                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <ShoppingCart size={16} className="text-primary-600" />
+                  კალათის გენერაცია
                 </h3>
-                <div className="space-y-2">
-                  {result.meal_plan.map((meal: any, i: number) => (
-                    <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                      <div className="w-7 h-7 bg-primary-100 rounded-lg flex items-center justify-center text-xs font-bold text-primary-700">
-                        {i + 1}
-                      </div>
-                      <div className="flex-1">
-                        <span className="font-medium text-sm text-gray-800">{meal.name}</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-xs text-gray-500">
-                        <span className="font-semibold text-gray-700">{meal.calories} კკალ</span>
-                        <span>ც:{meal.protein}გ</span>
-                        <span>ცხ:{meal.fat}გ</span>
-                        <span>ნ:{meal.carbs}გ</span>
-                      </div>
-                    </div>
-                  ))}
+                <p className="text-xs text-gray-500 mb-3">
+                  სისტემა ავტომატურად შეადგენს {result.adjusted_calories} კკალ-ის კალათს თქვენი მაკრო პროპორციებით
+                </p>
+
+                {/* ვეგანური + ფილტრი */}
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => setVeganMode(!veganMode)}
+                    className={clsx(
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all',
+                      veganMode ? 'bg-green-500 text-white border-green-500' : 'bg-white text-green-700 border-green-300'
+                    )}
+                  >
+                    <Leaf size={12} />
+                    ვეგანური
+                  </button>
+                  <button
+                    onClick={() => setShowFilter(!showFilter)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                  >
+                    <Filter size={12} />
+                    ფილტრი {excludedCats.length > 0 && `(-${excludedCats.length})`}
+                  </button>
                 </div>
+
+                {showFilter && (
+                  <div className="mb-3">
+                    <CategoryFilter
+                      categories={categories}
+                      excluded={excludedCats}
+                      onChange={setExcludedCats}
+                    />
+                  </div>
+                )}
+
+                <button
+                  onClick={handleGenerateBasket}
+                  disabled={basketLoading}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                >
+                  {basketLoading ? (
+                    <><Loader2 size={15} className="animate-spin" /> გენერაცია...</>
+                  ) : (
+                    <><ShoppingCart size={15} /> კალათის გენერაცია ({result.adjusted_calories} კკალ)</>
+                  )}
+                </button>
               </div>
 
-              {/* Disclaimer */}
-              <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                <AlertTriangle size={14} className="text-gray-400 shrink-0 mt-0.5" />
-                <p className="text-xs text-gray-400">{result.disclaimer}</p>
-              </div>
+              {/* კალათი */}
+              {basket.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <ShoppingCart size={16} className="text-primary-600" />
+                      კვების კალათი
+                      <span className="tag bg-primary-50 text-primary-700">{basket.length} პროდუქტი</span>
+                    </h3>
+                    <button
+                      onClick={() => setShowRecipe(true)}
+                      className="btn-secondary flex items-center gap-2 text-sm"
+                    >
+                      <ChefHat size={15} />
+                      რეცეპტი
+                    </button>
+                  </div>
+                  <BasketResults />
+                </div>
+              )}
+
+              {showRecipe && (
+                <RecipeModal
+                  basket={basket}
+                  totals={totals}
+                  onClose={() => setShowRecipe(false)}
+                />
+              )}
             </>
           ) : (
             <div className="card flex flex-col items-center justify-center py-24 text-center">
