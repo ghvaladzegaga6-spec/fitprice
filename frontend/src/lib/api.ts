@@ -63,6 +63,7 @@ export const basketApi = {
     api.post('/basket/rebalance', { basket, removed_id, target_calories }),
 
   categories: () => api.get('/basket/categories'),
+  veganCategories: () => api.get('/basket/vegan_categories'),
   promos: () => api.get('/basket/promos'),
 };
 
