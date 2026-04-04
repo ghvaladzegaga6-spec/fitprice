@@ -48,18 +48,10 @@ export const basketApi = {
     sort_by_price: 'asc' | 'desc' = 'asc'
   ) =>
     api.post('/basket/replace', {
-      product_id,
-      excluded_ids,
-      target_calories,
-      new_category,
-      sort_by_price,
+      product_id, excluded_ids, target_calories, new_category, sort_by_price,
     }),
 
-  rebalance: (
-    basket: any[],
-    removed_id: number,
-    target_calories?: number
-  ) =>
+  rebalance: (basket: any[], removed_id: number, target_calories?: number) =>
     api.post('/basket/rebalance', { basket, removed_id, target_calories }),
 
   categories: () => api.get('/basket/categories'),
