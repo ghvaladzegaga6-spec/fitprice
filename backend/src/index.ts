@@ -28,7 +28,7 @@ for (const key of REQUIRED_ENV) {
 }
 
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 4000; // v2
 
 app.set('trust proxy', 1);
 
