@@ -112,15 +112,17 @@ export default function PersonalizationPage() {
       const payload = {
   gender: data.gender,
   age: Number(data.age),
-  weight: Number(data.weight_kg),
-  height: Number(data.height_cm),
-  activity: data.activity_level === 'low' ? 'sedentary' 
-    : data.activity_level === 'medium' ? 'moderate' 
-    : 'active',
+  weight_kg: Number(data.weight_kg),
+  height_cm: Number(data.height_cm),
+  activity_level: data.activity_level === 'low' ? 'low'
+    : data.activity_level === 'medium' ? 'medium'
+    : 'high',
   goal: data.goal,
-  target_weight: data.target_weight_kg ? Number(data.target_weight_kg) : undefined,
+  target_weight_kg: data.target_weight_kg ? Number(data.target_weight_kg) : undefined,
+  eating_window: data.eating_window,
+  carb_sensitivity: data.carb_sensitivity,
+  hunger_peak: data.hunger_peak,
 };
-
       // თუ შესულია — შენახვა, თუ არა — მხოლოდ გათვლა
     const endpoint = '/nutrition/calculate';
       const { data: res } = await api.post(endpoint, payload);
