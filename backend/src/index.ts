@@ -13,6 +13,7 @@ import { nutritionRouter } from './nutrition/nutrition.router';
 import { adsRouter } from './ads/ads.router';
 import { usersRouter } from './users/users.router';
 import { personalizationRouter } from './personalization/personalization.router';
+import { adminRouter } from './admin/admin.router';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import dotenv from 'dotenv';
@@ -28,7 +29,7 @@ for (const key of REQUIRED_ENV) {
 }
 
 const app = express();
-const PORT = process.env.PORT || 4000; // v2
+const PORT = process.env.PORT || 4000;
 
 app.set('trust proxy', 1);
 
@@ -50,7 +51,7 @@ app.use(cookieParser());
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000').split(',').map(s => s.trim());
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+    if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes('*')) callback(null, true);
     else callback(new Error('CORS policy violation'));
   },
   credentials: true,
@@ -76,15 +77,15 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // Routes
-app.use('/api/auth',             authLimiter, authRouter);
-app.use('/api/basket',           basketRouter);
-app.use('/api/nutrition',        nutritionRouter);
-app.use('/api/ads',              adsRouter);
-app.use('/api/users',            usersRouter);
-app.use('/api/personalization',  personalizationRouter);
+app.use('/api/auth',            authLimiter, authRouter);
+app.use('/api/basket',          basketRouter);
+app.use('/api/nutrition',       nutritionRouter);
+app.use('/api/ads',             adsRouter);
+app.use('/api/users',           usersRouter);
+app.use('/api/personalization', personalizationRouter);
+app.use('/api/admin',           adminRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
-
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
 app.use(errorHandler);
 
@@ -106,4 +107,3 @@ async function bootstrap() {
 bootstrap();
 
 export default app;
- 
