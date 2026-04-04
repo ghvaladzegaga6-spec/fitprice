@@ -120,7 +120,7 @@ export default function PersonalizationPage() {
       };
 
       // თუ შესულია — შენახვა, თუ არა — მხოლოდ გათვლა
-      const endpoint = user ? '/personalization/calculate' : '/nutrition/calculate';
+    const endpoint = '/nutrition/calculate';
       const { data: res } = await api.post(endpoint, payload);
       setResult(res);
       setSavedProfile({ ...payload, ...res });
