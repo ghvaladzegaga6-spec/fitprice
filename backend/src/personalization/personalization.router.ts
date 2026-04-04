@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import axios from 'axios';
-import { requireAuth } from '../middleware/auth';
+import { authenticate as requireAuth } from '../middleware/auth';
 import { db } from '../db';
 
 export const personalizationRouter = Router();
