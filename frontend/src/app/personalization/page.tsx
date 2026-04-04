@@ -110,14 +110,18 @@ export default function PersonalizationPage() {
     setLoading(true);
     try {
       const payload = {
-        ...data,
-        age: Number(data.age),
-        weight_kg: Number(data.weight_kg),
-        height_cm: Number(data.height_cm),
-        target_weight_kg: data.target_weight_kg ? Number(data.target_weight_kg) : undefined,
-        calorie_multiplier: savedProfile?.calorie_multiplier || 1.0,
-        vegan_mode: veganMode,
-      };
+  gender: data.gender,
+  age: Number(data.age),
+  weight: Number(data.weight_kg),
+  height: Number(data.height_cm),
+  activity: data.activity_level === 'low' ? 'sedentary' 
+    : data.activity_level === 'medium' ? 'moderate' 
+    : 'active',
+  goal: data.goal,
+  target_weight: data.target_weight_kg ? Number(data.target_weight_kg) : undefined,
+  calorie_multiplier: savedProfile?.calorie_multiplier || 1.0,
+  vegan_mode: veganMode,
+};
 
       // თუ შესულია — შენახვა, თუ არა — მხოლოდ გათვლა
     const endpoint = '/nutrition/calculate';
