@@ -124,7 +124,7 @@ export default function PersonalizationPage() {
   hunger_peak: data.hunger_peak,
 };
       // თუ შესულია — შენახვა, თუ არა — მხოლოდ გათვლა
-    const endpoint = '/nutrition/calculate';
+    const endpoint = '/personalization/calculate';
       const { data: res } = await api.post(endpoint, payload);
       setResult(res);
       setSavedProfile({ ...payload, ...res });
