@@ -119,8 +119,6 @@ export default function PersonalizationPage() {
     : 'active',
   goal: data.goal,
   target_weight: data.target_weight_kg ? Number(data.target_weight_kg) : undefined,
-  calorie_multiplier: savedProfile?.calorie_multiplier || 1.0,
-  vegan_mode: veganMode,
 };
 
       // თუ შესულია — შენახვა, თუ არა — მხოლოდ გათვლა
