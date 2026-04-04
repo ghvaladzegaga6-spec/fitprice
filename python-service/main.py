@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -9,6 +8,7 @@ import os
 from optimizer.basket import router as basket_router
 from nutrition.engine import router as nutrition_router
 from data.loader import router as data_router
+from personalization.engine import router as personalization_router
 
 limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(title="FITPRICE Python Service", docs_url=None, redoc_url=None)
@@ -37,6 +37,7 @@ async def verify_internal_token(request: Request):
 app.include_router(basket_router, prefix="/api/basket", dependencies=[Depends(verify_internal_token)])
 app.include_router(nutrition_router, prefix="/api/nutrition", dependencies=[Depends(verify_internal_token)])
 app.include_router(data_router, prefix="/api/data", dependencies=[Depends(verify_internal_token)])
+app.include_router(personalization_router, prefix="/api/personalization", dependencies=[Depends(verify_internal_token)])
 
 @app.get("/health")
 async def health():
