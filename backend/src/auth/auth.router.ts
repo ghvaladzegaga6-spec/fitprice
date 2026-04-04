@@ -12,7 +12,7 @@ export const authRouter = Router();
 const JWT_SECRET = process.env.JWT_SECRET!;
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET!;
 const ACCESS_TOKEN_TTL = '15m';
-const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days ms
+const REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000;
 
 const registerSchema = Joi.object({
   email: Joi.string().email().max(255).required(),
@@ -25,8 +25,12 @@ const loginSchema = Joi.object({
   password: Joi.string().required(),
 });
 
-function generateTokens(userId: string) {
-  const accessToken = jwt.sign({ sub: userId, type: 'access' }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_TTL });
+function generateTokens(userId: string, role: string = 'user') {
+  const accessToken = jwt.sign(
+    { sub: userId, type: 'access', role },
+    JWT_SECRET,
+    { expiresIn: ACCESS_TOKEN_TTL }
+  );
   const refreshToken = uuidv4() + crypto.randomBytes(16).toString('hex');
   return { accessToken, refreshToken };
 }
@@ -48,7 +52,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     [email.toLowerCase(), hash, name]
   );
 
-  const { accessToken, refreshToken } = generateTokens(user.rows[0].id);
+  const { accessToken, refreshToken } = generateTokens(user.rows[0].id, user.rows[0].role);
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
   await db.query(
     'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
@@ -82,7 +86,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'არასწორი ელ-ფოსტა ან პაროლი.' });
   }
 
-  const { accessToken, refreshToken } = generateTokens(user.id);
+  const { accessToken, refreshToken } = generateTokens(user.id, user.role);
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
   await db.query(
     'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
@@ -106,7 +110,7 @@ authRouter.post('/refresh', async (req: Request, res: Response) => {
 
   const tokenHash = crypto.createHash('sha256').update(refreshToken).digest('hex');
   const stored = await db.query(
-    'SELECT rt.*, u.is_active FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id WHERE rt.token_hash = $1 AND rt.expires_at > NOW()',
+    'SELECT rt.*, u.is_active, u.role FROM refresh_tokens rt JOIN users u ON u.id = rt.user_id WHERE rt.token_hash = $1 AND rt.expires_at > NOW()',
     [tokenHash]
   );
 
@@ -115,10 +119,9 @@ authRouter.post('/refresh', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Session expired' });
   }
 
-  const { user_id } = stored.rows[0];
-  // Rotate refresh token
+  const { user_id, role } = stored.rows[0];
   await db.query('DELETE FROM refresh_tokens WHERE token_hash = $1', [tokenHash]);
-  const { accessToken, refreshToken: newRefresh } = generateTokens(user_id);
+  const { accessToken, refreshToken: newRefresh } = generateTokens(user_id, role);
   const newHash = crypto.createHash('sha256').update(newRefresh).digest('hex');
   await db.query(
     'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)',
@@ -144,7 +147,10 @@ authRouter.post('/logout', authenticate, async (req: any, res: Response) => {
 });
 
 authRouter.get('/me', authenticate, async (req: any, res: Response) => {
-  const user = await db.query('SELECT id, email, name, role, created_at FROM users WHERE id = $1', [req.userId]);
+  const user = await db.query(
+    'SELECT id, email, name, role, is_suspended, gym_id, created_at FROM users WHERE id = $1',
+    [req.userId]
+  );
   if (user.rows.length === 0) return res.status(404).json({ error: 'Not found' });
   return res.json({ user: user.rows[0] });
 });
