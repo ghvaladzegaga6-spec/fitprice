@@ -1,91 +1,119 @@
+from fastapi import APIRouter
 import pandas as pd
 import os
-import math
-from fastapi import APIRouter
 
 router = APIRouter()
-DATA_PATH = os.path.join(os.path.dirname(__file__), "products.csv")
+_df_cache = None
+
+DATA_PATH = os.path.join(os.path.dirname(__file__), "products.xlsx")
 
 def load_products() -> pd.DataFrame:
-    df = pd.read_csv(DATA_PATH, encoding="utf-8-sig")
-    df.columns = df.columns.str.strip()
+    global _df_cache
+    if _df_cache is not None:
+        return _df_cache.copy()
 
-    for col in ["protein","fat","carbs","calories","price",
-                "unit_weight","total_package_weight"]:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-    df["is_promo"] = df["is_promo"].astype(int).astype(bool)
-
-    # vegan
-    if "vegan" in df.columns:
-        df["vegan"] = df["vegan"].fillna("").astype(str).str.strip()
-        df["is_vegan"] = df["vegan"] == "1"
+    # Support both xlsx and csv
+    if os.path.exists(DATA_PATH):
+        df = pd.read_excel(DATA_PATH)
     else:
-        df["is_vegan"] = False
+        csv_path = DATA_PATH.replace(".xlsx", ".csv")
+        df = pd.read_csv(csv_path)
 
-    # min_max_weight — parse "100-350" → min_g, max_g
-    if "min_max_weight" in df.columns:
-        df["min_max_weight"] = df["min_max_weight"].fillna("50-200").astype(str)
-        df["min_g"] = df["min_max_weight"].str.split("-").str[0].str.strip()
-        df["max_g"] = df["min_max_weight"].str.split("-").str[1].str.strip()
-        df["min_g"] = pd.to_numeric(df["min_g"], errors="coerce").fillna(50)
-        df["max_g"] = pd.to_numeric(df["max_g"], errors="coerce").fillna(200)
-    else:
-        df["min_g"] = 50
-        df["max_g"] = 200
+    df.columns = [c.strip().lower() for c in df.columns]
 
-    # min_weight_to_buy
-    if "min_weight_to_buy" in df.columns:
-        df["min_weight_to_buy"] = pd.to_numeric(
-            df["min_weight_to_buy"], errors="coerce"
-        ).fillna(0)
-    else:
-        df["min_weight_to_buy"] = 0
+    # Normalize columns
+    df["protein"]  = pd.to_numeric(df.get("protein",  0), errors="coerce").fillna(0)
+    df["fat"]      = pd.to_numeric(df.get("fat",      0), errors="coerce").fillna(0)
+    df["carbs"]    = pd.to_numeric(df.get("carbs",    0), errors="coerce").fillna(0)
+    df["calories"] = pd.to_numeric(df.get("calories", 0), errors="coerce").fillna(0)
+    df["price"]    = pd.to_numeric(df.get("price",    0), errors="coerce").fillna(0)
+    df["is_promo"] = pd.to_numeric(df.get("is_promo", 0), errors="coerce").fillna(0).astype(int)
+    df["gym"]      = pd.to_numeric(df.get("gym",      1), errors="coerce").fillna(0).astype(int)
+    df["vegan"]    = pd.to_numeric(df.get("vegan",    0), errors="coerce").fillna(0).astype(int)
 
-    # sale_type
-    if "sale_type" not in df.columns:
-        df["sale_type"] = df.apply(
-            lambda r: "package_pieces" if r["total_package_weight"] > 0 and r["total_package_weight"] != 1000 else "weight",
-            axis=1
-        )
+    # sale_type: weight (წონით) vs package_pieces (დაფასოვებული)
+    # weight სვეტი — თუ 100 წერია = წონით იყიდება
+    # total_package_weight სვეტი — თუ > 0 = დაფასოვებული
+    w_col   = pd.to_numeric(df.get("weight",               0), errors="coerce").fillna(0)
+    pkg_col = pd.to_numeric(df.get("total_package_weight", 0), errors="coerce").fillna(0)
 
-    df = df[df["price"] > 0].copy()
-    df.reset_index(drop=True, inplace=True)
-    df["id"] = df.index
-    return df
+    df["sale_type"] = df.apply(
+        lambda r: "weight" if float(r.get("weight", 0) or 0) > 0 else "package_pieces",
+        axis=1
+    )
+    df["unit_weight"]           = w_col
+    df["total_package_weight"]  = pkg_col
+
+    # min/max weight parsing — "200-400" → min_g=200, max_g=400
+    def parse_minmax(val):
+        try:
+            parts = str(val).split("-")
+            return float(parts[0]), float(parts[1])
+        except:
+            return 50.0, 300.0
+
+    df[["min_g", "max_g"]] = df["min_max_weight"].apply(
+        lambda v: pd.Series(parse_minmax(v))
+    )
+
+    # min_weight_to_purchase
+    df["min_weight_to_buy"] = pd.to_numeric(
+        df.get("min_weight_to_purchase", 0), errors="coerce"
+    ).fillna(0)
+
+    # id column
+    df = df.reset_index(drop=True)
+    df["id"] = df.index + 1
+
+    df["category"] = df["category"].fillna("სხვა").astype(str)
+    df["product"]  = df["product"].fillna("").astype(str)
+
+    _df_cache = df.copy()
+    return df.copy()
+
 
 def df_to_dict(df: pd.DataFrame) -> list:
-    records = []
-    for _, row in df.iterrows():
-        record = {}
-        for k, v in row.items():
-            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
-                record[k] = None
-            else:
-                record[k] = v
-        records.append(record)
-    return records
+    return df.to_dict(orient="records")
+
+
+def invalidate_cache():
+    global _df_cache
+    _df_cache = None
+
+
+# ─── API endpoints ────────────────────────────────────────────────────────────
+
+@router.get("/categories")
+def get_categories():
+    df = load_products()
+    cats = sorted(df["category"].unique().tolist())
+    return {"categories": cats}
+
+
+@router.get("/vegan_categories")
+def get_vegan_categories():
+    df = load_products()
+    vegan_df = df[df["vegan"] == 1]
+    cats = sorted(vegan_df["category"].unique().tolist())
+    return {"categories": cats}
+
+
+@router.get("/gym_categories")
+def get_gym_categories():
+    df = load_products()
+    gym_df = df[df["gym"] == 1]
+    cats = sorted(gym_df["category"].unique().tolist())
+    return {"categories": cats}
+
+
+@router.get("/promos")
+def get_promos():
+    df = load_products()
+    promo_df = df[df["is_promo"] == 1].copy()
+    return {"promos": df_to_dict(promo_df)}
+
 
 @router.get("/products")
 def get_products():
     df = load_products()
     return {"products": df_to_dict(df)}
-
-@router.get("/categories")
-def get_categories():
-    df = load_products()
-    return {"categories": sorted(df["category"].unique().tolist())}
-
-@router.get("/vegan_categories")
-def get_vegan_categories():
-    df = load_products()
-    vegan_cats = sorted(df[df["is_vegan"] == True]["category"].unique().tolist())
-    return {"categories": vegan_cats}
-
-@router.get("/promos")
-def get_promos():
-    df = load_products()
-    promos = df[df["is_promo"] == True]
-    sample = promos.sample(min(3, len(promos))) if len(promos) >= 1 else promos
-    return {"promos": df_to_dict(sample)}
