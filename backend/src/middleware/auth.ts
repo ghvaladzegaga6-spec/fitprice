@@ -11,6 +11,7 @@ export function authenticate(req: any, res: Response, next: NextFunction) {
     const payload: any = jwt.verify(token, process.env.JWT_SECRET!);
     req.userId = payload.sub;
     req.userRole = payload.role;
+    req.userGymId = payload.gym_id;
     next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
@@ -24,6 +25,8 @@ export function optionalAuth(req: any, res: Response, next: NextFunction) {
     try {
       const payload: any = jwt.verify(token, process.env.JWT_SECRET!);
       req.userId = payload.sub;
+      req.userRole = payload.role;
+      req.userGymId = payload.gym_id;
     } catch {
       // ignore
     }
@@ -32,7 +35,8 @@ export function optionalAuth(req: any, res: Response, next: NextFunction) {
 }
 
 export function requireAdmin(req: any, res: Response, next: NextFunction) {
-  if (req.userRole !== 'admin') {
+  const adminRoles = ['admin', 'super_admin', 'gym_admin'];
+  if (!adminRoles.includes(req.userRole)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   next();
