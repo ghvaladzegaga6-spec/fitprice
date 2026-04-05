@@ -37,23 +37,16 @@ api.interceptors.response.use(
 );
 
 export const basketApi = {
-  optimize: (data: any) =>
-    api.post('/basket/optimize', data),
-
+  optimize: (data: any) => api.post('/basket/optimize', data),
   replace: (
     product_id: number,
     excluded_ids: number[],
     target_calories?: number,
     new_category?: string,
     sort_by_price: 'asc' | 'desc' = 'asc'
-  ) =>
-    api.post('/basket/replace', {
-      product_id, excluded_ids, target_calories, new_category, sort_by_price,
-    }),
-
+  ) => api.post('/basket/replace', { product_id, excluded_ids, target_calories, new_category, sort_by_price }),
   rebalance: (basket: any[], removed_id: number, target_calories?: number) =>
     api.post('/basket/rebalance', { basket, removed_id, target_calories }),
-
   categories: () => api.get('/basket/categories'),
   veganCategories: () => api.get('/basket/vegan_categories'),
   promos: () => api.get('/basket/promos'),
@@ -68,8 +61,7 @@ export const nutritionApi = {
 };
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post('/auth/login', { email, password }),
+  login: (email: string, password: string) => api.post('/auth/login', { email, password }),
   register: (email: string, password: string, name: string) =>
     api.post('/auth/register', { email, password, name }),
   logout: () => api.post('/auth/logout'),
@@ -78,4 +70,13 @@ export const authApi = {
 
 export const adsApi = {
   list: () => api.get('/ads'),
+};
+
+export const personalizationApi = {
+  calculate: (data: any) => api.post('/personalization/calculate', data),
+  profile: () => api.get('/personalization/profile'),
+  checkins: () => api.get('/personalization/checkins'),
+  checkinNeeded: () => api.get('/personalization/checkin/needed'),
+  checkin: (data: any) => api.post('/personalization/checkin', data),
+  dailyPlan: () => api.get('/personalization/daily-plan'),
 };
