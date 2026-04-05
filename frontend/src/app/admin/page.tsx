@@ -9,7 +9,7 @@ import toast from 'react-hot-toast';
 export default function AdminPage() {
   const { user } = useAuthStore();
   const router = useRouter();
-  const isSuperAdmin = user?.role === 'super_admin' || user?.role === 'admin';
+  const isSuperAdmin = user?.role === 'super_admin';
   const isGymAdmin = user?.role === 'gym_admin';
 
   const [tab, setTab] = useState<'users' | 'gyms'>('users');
@@ -19,7 +19,8 @@ export default function AdminPage() {
   const [showAddUser, setShowAddUser] = useState(false);
   const [showAddGym, setShowAddGym] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
-  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editingUser, setEditingUser] = useState<string | null>(null);
+  const [showPasswordFor, setShowPasswordFor] = useState<string | null>(null);
 
   const [userForm, setUserForm] = useState({ email: '', password: '', name: '', gym_id: '' });
   const [gymForm, setGymForm] = useState({ name: '', address: '', logo_url: '', photo_url: '', description: '', admin_email: '', admin_password: '', admin_name: '' });
@@ -27,14 +28,17 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!user) { router.push('/auth/login'); return; }
-    if (!['admin', 'super_admin', 'gym_admin'].includes(user.role)) { router.push('/basket'); return; }
+    if (!['super_admin', 'gym_admin'].includes(user.role)) { router.push('/basket'); return; }
     fetchAll();
   }, [user]);
 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [u, g] = await Promise.all([api.get('/admin/users'), api.get('/admin/gyms')]);
+      const promises = [api.get('/admin/users')];
+      if (isSuperAdmin) promises.push(api.get('/admin/gyms'));
+      else promises.push(api.get('/admin/gyms'));
+      const [u, g] = await Promise.all(promises);
       setUsers(u.data.users);
       setGyms(g.data.gyms);
     } catch { toast.error('Error loading data'); }
@@ -56,7 +60,7 @@ export default function AdminPage() {
 
   const handleAddGym = async () => {
     if (!gymForm.name || !gymForm.admin_email || !gymForm.admin_password || !gymForm.admin_name) {
-      toast.error('Name, admin email, password and name required'); return;
+      toast.error('Gym name, admin email, password and name required'); return;
     }
     try {
       await api.post('/admin/gyms', gymForm);
@@ -113,15 +117,17 @@ export default function AdminPage() {
             <h1 className="text-2xl font-display font-bold text-gray-900">
               {isSuperAdmin ? 'Super Admin Panel' : 'Gym Admin Panel'}
             </h1>
-            <p className="text-sm text-gray-500">FITPRICE Management · {user.email}</p>
+            <p className="text-sm text-gray-500">FITPRICE · {user.email}</p>
           </div>
           <div className="flex gap-2">
             {isSuperAdmin && (
-              <button onClick={() => { setShowAddGym(true); setTab('gyms'); }} className="flex items-center gap-2 btn-secondary text-sm">
+              <button onClick={() => { setShowAddGym(true); setTab('gyms'); }}
+                className="flex items-center gap-2 btn-secondary text-sm">
                 <Building2 size={15} /> Add Gym
               </button>
             )}
-            <button onClick={() => { setShowAddUser(true); setTab('users'); }} className="flex items-center gap-2 btn-primary text-sm">
+            <button onClick={() => { setShowAddUser(true); setTab('users'); }}
+              className="flex items-center gap-2 btn-primary text-sm">
               <Plus size={15} /> Add User
             </button>
           </div>
@@ -130,7 +136,7 @@ export default function AdminPage() {
         <div className="flex border-b border-gray-200">
           {[
             { key: 'users', label: `Users (${users.length})`, icon: Users },
-            ...(isSuperAdmin ? [{ key: 'gyms', label: `Gyms (${gyms.length})`, icon: Building2 }] : []),
+            { key: 'gyms', label: `Gyms (${gyms.length})`, icon: Building2 },
           ].map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setTab(key as any)}
               className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-all ${tab === key ? 'border-primary-600 text-primary-600' : 'border-transparent text-gray-500'}`}>
@@ -154,24 +160,29 @@ export default function AdminPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="label">Name</label>
-                        <input className="input" placeholder="Full name" value={userForm.name} onChange={e => setUserForm({...userForm, name: e.target.value})} />
+                        <input className="input" placeholder="Full name" value={userForm.name}
+                          onChange={e => setUserForm({...userForm, name: e.target.value})} />
                       </div>
                       <div>
                         <label className="label">Email</label>
-                        <input className="input" type="email" placeholder="user@example.com" value={userForm.email} onChange={e => setUserForm({...userForm, email: e.target.value})} />
+                        <input className="input" type="email" placeholder="user@example.com" value={userForm.email}
+                          onChange={e => setUserForm({...userForm, email: e.target.value})} />
                       </div>
                       <div>
                         <label className="label">Password</label>
                         <div className="relative">
-                          <input className="input pr-10" type={showPwd ? 'text' : 'password'} placeholder="Min 6 chars" value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} />
-                          <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                          <input className="input pr-10" type={showPwd ? 'text' : 'password'} placeholder="Min 6 chars"
+                            value={userForm.password} onChange={e => setUserForm({...userForm, password: e.target.value})} />
+                          <button type="button" onClick={() => setShowPwd(!showPwd)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
                             {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
                           </button>
                         </div>
                       </div>
                       <div>
                         <label className="label">Gym</label>
-                        <select className="input" value={userForm.gym_id} onChange={e => setUserForm({...userForm, gym_id: e.target.value})}>
+                        <select className="input" value={userForm.gym_id}
+                          onChange={e => setUserForm({...userForm, gym_id: e.target.value})}>
                           <option value="">Select gym</option>
                           {gyms.filter(g => g.is_active).map(g => (
                             <option key={g.id} value={g.id}>{g.name}</option>
@@ -203,31 +214,51 @@ export default function AdminPage() {
                             <td className="px-4 py-3">
                               <div className="font-medium text-sm text-gray-900">{u.name}</div>
                               <div className="text-xs text-gray-400">{u.email}</div>
+                              {showPasswordFor === u.id && u.plain_password && (
+                                <div className="text-xs text-blue-600 mt-0.5 font-mono bg-blue-50 px-1.5 py-0.5 rounded">
+                                  Pass: {u.plain_password}
+                                </div>
+                              )}
                             </td>
-                            <td className="px-4 py-3"><span className="text-sm text-gray-600">{u.gym_name || '-'}</span></td>
+                            <td className="px-4 py-3">
+                              <span className="text-sm text-gray-600">{u.gym_name || '-'}</span>
+                            </td>
                             <td className="px-4 py-3">
                               {u.is_suspended ? (
                                 <span className="tag bg-red-50 text-red-600">Suspended</span>
                               ) : (
                                 <span className="tag bg-green-50 text-green-600">Active</span>
                               )}
-                              {u.role === 'gym_admin' && <span className="tag bg-blue-50 text-blue-600 ml-1">Gym Admin</span>}
+                              {u.role === 'gym_admin' && (
+                                <span className="tag bg-blue-50 text-blue-600 ml-1">Gym Admin</span>
+                              )}
                             </td>
-                            <td className="px-4 py-3 text-xs text-gray-400">{new Date(u.created_at).toLocaleDateString('ka-GE')}</td>
+                            <td className="px-4 py-3 text-xs text-gray-400">
+                              {new Date(u.created_at).toLocaleDateString('ka-GE')}
+                            </td>
                             <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <button onClick={() => { setEditingUser(editingUser === u.id ? null : u.id); setEditForm({ name: u.name, email: u.email, password: '', gym_id: u.gym_id || '' }); }}
+                                <button
+                                  onClick={() => setShowPasswordFor(showPasswordFor === u.id ? null : u.id)}
+                                  className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                                  title="Show password">
+                                  <Eye size={14} />
+                                </button>
+                                <button
+                                  onClick={() => { setEditingUser(editingUser === u.id ? null : u.id); setEditForm({ name: u.name, email: u.email, password: '', gym_id: u.gym_id || '' }); }}
                                   className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
                                   <Pencil size={14} />
                                 </button>
                                 {u.role !== 'super_admin' && (
-                                  <button onClick={() => handleSuspend(u.id, u.is_suspended)}
+                                  <button
+                                    onClick={() => handleSuspend(u.id, u.is_suspended)}
                                     className={`flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium transition-all ${u.is_suspended ? 'bg-green-50 text-green-600' : 'bg-yellow-50 text-yellow-600'}`}>
                                     {u.is_suspended ? <><PlayCircle size={12} /> Restore</> : <><PauseCircle size={12} /> Suspend</>}
                                   </button>
                                 )}
                                 {u.role !== 'super_admin' && (
-                                  <button onClick={() => handleDeleteUser(u.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
+                                  <button onClick={() => handleDeleteUser(u.id)}
+                                    className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
                                     <Trash2 size={14} />
                                   </button>
                                 )}
@@ -240,20 +271,24 @@ export default function AdminPage() {
                                 <div className="grid grid-cols-4 gap-2">
                                   <div>
                                     <label className="label text-xs">Name</label>
-                                    <input className="input text-sm py-1.5" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} />
+                                    <input className="input text-sm py-1.5" value={editForm.name}
+                                      onChange={e => setEditForm({...editForm, name: e.target.value})} />
                                   </div>
                                   <div>
                                     <label className="label text-xs">Email</label>
-                                    <input className="input text-sm py-1.5" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} />
+                                    <input className="input text-sm py-1.5" value={editForm.email}
+                                      onChange={e => setEditForm({...editForm, email: e.target.value})} />
                                   </div>
                                   <div>
                                     <label className="label text-xs">New Password</label>
-                                    <input className="input text-sm py-1.5" type="password" placeholder="Leave empty to keep" value={editForm.password} onChange={e => setEditForm({...editForm, password: e.target.value})} />
+                                    <input className="input text-sm py-1.5" type="text" placeholder="Leave empty to keep"
+                                      value={editForm.password} onChange={e => setEditForm({...editForm, password: e.target.value})} />
                                   </div>
                                   {isSuperAdmin && (
                                     <div>
                                       <label className="label text-xs">Gym</label>
-                                      <select className="input text-sm py-1.5" value={editForm.gym_id} onChange={e => setEditForm({...editForm, gym_id: e.target.value})}>
+                                      <select className="input text-sm py-1.5" value={editForm.gym_id}
+                                        onChange={e => setEditForm({...editForm, gym_id: e.target.value})}>
                                         <option value="">No gym</option>
                                         {gyms.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                                       </select>
@@ -261,10 +296,12 @@ export default function AdminPage() {
                                   )}
                                 </div>
                                 <div className="flex gap-2 mt-2">
-                                  <button onClick={() => handleEditUser(u.id)} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium">
+                                  <button onClick={() => handleEditUser(u.id)}
+                                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium">
                                     <Check size={12} /> Save
                                   </button>
-                                  <button onClick={() => setEditingUser(null)} className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancel</button>
+                                  <button onClick={() => setEditingUser(null)}
+                                    className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs">Cancel</button>
                                 </div>
                               </td>
                             </tr>
@@ -273,53 +310,63 @@ export default function AdminPage() {
                       ))}
                     </tbody>
                   </table>
-                  {users.length === 0 && <div className="text-center py-12 text-gray-400 text-sm">No users yet</div>}
+                  {users.length === 0 && (
+                    <div className="text-center py-12 text-gray-400 text-sm">No users yet</div>
+                  )}
                 </div>
               </div>
             )}
 
-            {tab === 'gyms' && isSuperAdmin && (
+            {tab === 'gyms' && (
               <div className="space-y-4">
-                {showAddGym && (
+                {showAddGym && isSuperAdmin && (
                   <div className="card border-2 border-primary-200 bg-primary-50/30">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="font-semibold text-gray-900">New Gym + Admin Account</h3>
                       <button onClick={() => setShowAddGym(false)}><X size={18} className="text-gray-400" /></button>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="col-span-2 text-xs font-medium text-gray-500 uppercase tracking-wide border-b pb-2">Gym Info</div>
+                      <div className="col-span-2 text-xs font-semibold text-gray-400 uppercase">Gym Info</div>
                       <div>
                         <label className="label">Gym Name *</label>
-                        <input className="input" placeholder="FitLife Tbilisi" value={gymForm.name} onChange={e => setGymForm({...gymForm, name: e.target.value})} />
+                        <input className="input" placeholder="FitLife Tbilisi" value={gymForm.name}
+                          onChange={e => setGymForm({...gymForm, name: e.target.value})} />
                       </div>
                       <div>
                         <label className="label">Address</label>
-                        <input className="input" placeholder="Tbilisi, Rustaveli 15" value={gymForm.address} onChange={e => setGymForm({...gymForm, address: e.target.value})} />
+                        <input className="input" placeholder="Tbilisi, Rustaveli 15" value={gymForm.address}
+                          onChange={e => setGymForm({...gymForm, address: e.target.value})} />
                       </div>
                       <div>
                         <label className="label">Logo URL</label>
-                        <input className="input" placeholder="https://..." value={gymForm.logo_url} onChange={e => setGymForm({...gymForm, logo_url: e.target.value})} />
+                        <input className="input" placeholder="https://..." value={gymForm.logo_url}
+                          onChange={e => setGymForm({...gymForm, logo_url: e.target.value})} />
                       </div>
                       <div>
                         <label className="label">Photo URL</label>
-                        <input className="input" placeholder="https://..." value={gymForm.photo_url} onChange={e => setGymForm({...gymForm, photo_url: e.target.value})} />
+                        <input className="input" placeholder="https://..." value={gymForm.photo_url}
+                          onChange={e => setGymForm({...gymForm, photo_url: e.target.value})} />
                       </div>
                       <div className="col-span-2">
                         <label className="label">Description</label>
-                        <input className="input" placeholder="About the gym..." value={gymForm.description} onChange={e => setGymForm({...gymForm, description: e.target.value})} />
+                        <input className="input" placeholder="About the gym..." value={gymForm.description}
+                          onChange={e => setGymForm({...gymForm, description: e.target.value})} />
                       </div>
-                      <div className="col-span-2 text-xs font-medium text-gray-500 uppercase tracking-wide border-b pb-2 mt-2">Gym Admin Account</div>
+                      <div className="col-span-2 text-xs font-semibold text-gray-400 uppercase mt-2">Gym Admin Account</div>
                       <div>
                         <label className="label">Admin Name *</label>
-                        <input className="input" placeholder="Admin Name" value={gymForm.admin_name} onChange={e => setGymForm({...gymForm, admin_name: e.target.value})} />
+                        <input className="input" placeholder="Admin Name" value={gymForm.admin_name}
+                          onChange={e => setGymForm({...gymForm, admin_name: e.target.value})} />
                       </div>
                       <div>
                         <label className="label">Admin Email *</label>
-                        <input className="input" type="email" placeholder="admin@gym.com" value={gymForm.admin_email} onChange={e => setGymForm({...gymForm, admin_email: e.target.value})} />
+                        <input className="input" type="email" placeholder="admin@gym.com" value={gymForm.admin_email}
+                          onChange={e => setGymForm({...gymForm, admin_email: e.target.value})} />
                       </div>
                       <div>
                         <label className="label">Admin Password *</label>
-                        <input className="input" type="password" placeholder="Min 6 chars" value={gymForm.admin_password} onChange={e => setGymForm({...gymForm, admin_password: e.target.value})} />
+                        <input className="input" type="text" placeholder="Min 6 chars" value={gymForm.admin_password}
+                          onChange={e => setGymForm({...gymForm, admin_password: e.target.value})} />
                       </div>
                     </div>
                     <button onClick={handleAddGym} className="btn-primary mt-4 flex items-center gap-2">
@@ -344,9 +391,12 @@ export default function AdminPage() {
                           {g.address && <p className="text-xs text-gray-500 mt-0.5">{g.address}</p>}
                           {g.admin_email && <p className="text-xs text-blue-400 mt-0.5">Admin: {g.admin_email}</p>}
                         </div>
-                        <button onClick={() => handleDeleteGym(g.id)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition shrink-0">
-                          <Trash2 size={14} />
-                        </button>
+                        {isSuperAdmin && (
+                          <button onClick={() => handleDeleteGym(g.id)}
+                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition shrink-0">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                       <div className="mt-3">
                         <span className={`tag text-xs ${g.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
@@ -356,7 +406,9 @@ export default function AdminPage() {
                     </div>
                   ))}
                 </div>
-                {gyms.length === 0 && <div className="text-center py-12 text-gray-400 text-sm">No gyms added yet</div>}
+                {gyms.length === 0 && (
+                  <div className="text-center py-12 text-gray-400 text-sm">No gyms added yet</div>
+                )}
               </div>
             )}
           </>
