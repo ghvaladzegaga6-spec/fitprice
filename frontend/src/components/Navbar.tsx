@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShoppingCart, User, Brain, LogOut, LogIn } from 'lucide-react';
+import { ShoppingCart, User, Brain, LogOut, LogIn, Shield } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
@@ -20,11 +20,12 @@ export function Navbar() {
     { href: '/personalization', label: 'პერსონალიზაცია', icon: Brain },
   ];
 
+  const isAdmin = user?.role === 'super_admin' || user?.role === 'gym_admin';
+
   return (
     <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-100 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
           <Link href="/basket" className="flex items-center gap-2 group">
             <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-accent-500 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
               <span className="text-white font-bold text-sm">F</span>
@@ -34,7 +35,6 @@ export function Navbar() {
             </span>
           </Link>
 
-          {/* Nav Links */}
           <div className="flex items-center gap-1">
             {navItems.map(({ href, label, icon: Icon }) => (
               <Link
@@ -51,9 +51,24 @@ export function Navbar() {
                 <span className="hidden sm:inline">{label}</span>
               </Link>
             ))}
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className={clsx(
+                  'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all',
+                  pathname.startsWith('/admin')
+                    ? 'bg-purple-50 text-purple-700'
+                    : 'text-purple-600 hover:bg-purple-50'
+                )}
+              >
+                <Shield size={16} />
+                <span className="hidden sm:inline">
+                  {user?.role === 'super_admin' ? 'სუპერ ადმინი' : 'ადმინი'}
+                </span>
+              </Link>
+            )}
           </div>
 
-          {/* Auth */}
           <div className="flex items-center gap-2">
             {user ? (
               <div className="flex items-center gap-2">
