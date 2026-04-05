@@ -1,4 +1,3 @@
-<<<<<<< Updated upstream
 'use client';
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/store/auth.store';
@@ -366,6 +365,3 @@ export default function AdminPage() {
     </div>
   );
 }
-=======
-﻿
->>>>>>> Stashed changes
