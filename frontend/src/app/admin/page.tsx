@@ -5,8 +5,8 @@ import { api } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import {
   Users, Building2, Plus, Trash2, PauseCircle, PlayCircle, Loader2,
-  X, Eye, EyeOff, Pencil, Check, Shield, Key, ChevronDown, ChevronUp,
-  ToggleLeft, ToggleRight, Lock, Image, Upload, ExternalLink
+  X, Eye, EyeOff, Pencil, Check, Shield, Key,
+  ToggleLeft, ToggleRight, Lock, Image, Upload, ExternalLink, Nfc, Filter
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
@@ -17,11 +17,14 @@ export default function AdminPage() {
   const isSuperAdmin = user?.role === 'super_admin';
   const isGymAdmin   = user?.role === 'gym_admin';
 
-  const [tab, setTab] = useState<'users' | 'gyms' | 'banners' | 'password'>('users');
-  const [users, setUsers]   = useState<any[]>([]);
-  const [gyms,  setGyms]    = useState<any[]>([]);
-  const [ads,   setAds]     = useState<any[]>([]);
+  const [tab, setTab] = useState<'users' | 'gyms' | 'nfc' | 'banners' | 'password'>('users');
+  const [users, setUsers]     = useState<any[]>([]);
+  const [gyms,  setGyms]      = useState<any[]>([]);
+  const [ads,   setAds]       = useState<any[]>([]);
+  const [nfcUsers, setNfcUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [gymFilter, setGymFilter] = useState('');
+  const [nfcGymFilter, setNfcGymFilter] = useState('');
 
   const [showAddUser, setShowAddUser] = useState(false);
   const [showAddGym,  setShowAddGym]  = useState(false);
@@ -31,12 +34,11 @@ export default function AdminPage() {
   const [expandedGym, setExpandedGym] = useState<number | null>(null);
   const [gymAdminCreds, setGymAdminCreds] = useState<Record<number, any[]>>({});
 
-  const [userForm, setUserForm] = useState({ email: '', password: '', name: '', gym_id: '' });
+  const [userForm, setUserForm] = useState({ email:'', password:'', name:'', gym_id:'', nfc_order: false });
   const [gymForm, setGymForm]   = useState({ name:'', address:'', logo_url:'', photo_url:'', description:'', admin_email:'', admin_password:'', admin_name:'' });
-  const [editForm, setEditForm] = useState({ name:'', email:'', password:'', gym_id:'' });
+  const [editForm, setEditForm] = useState({ name:'', email:'', password:'', gym_id:'', nfc_order: false });
   const [pwdForm,  setPwdForm]  = useState({ current_password:'', new_password:'', confirm:'' });
 
-  // Banner state
   const [bannerForm, setBannerForm] = useState({ title:'', image_url:'', link_url:'' });
   const [bannerPreview, setBannerPreview] = useState<string>('');
   const [uploadingBanner, setUploadingBanner] = useState(false);
@@ -46,24 +48,31 @@ export default function AdminPage() {
     if (!user) { router.push('/auth/login'); return; }
     if (!['super_admin', 'gym_admin'].includes(user.role)) { router.push('/basket'); return; }
     fetchAll();
-    // Default tab: super_admin → users, gym_admin → users
-    setTab('users');
   }, [user]);
 
   const fetchAll = async () => {
     setLoading(true);
     try {
       const promises: Promise<any>[] = [api.get('/admin/users'), api.get('/admin/gyms')];
-      if (user?.role === 'super_admin') promises.push(api.get('/ads/admin/all'));
+      if (isSuperAdmin) {
+        promises.push(api.get('/ads/admin/all'));
+        promises.push(api.get('/admin/users/nfc'));
+      }
       const results = await Promise.all(promises);
       setUsers(results[0].data.users);
       setGyms(results[1].data.gyms);
       if (results[2]) setAds(results[2].data.ads || []);
+      if (results[3]) setNfcUsers(results[3].data.users || []);
     } catch { toast.error('მონაცემების ჩატვირთვა ვერ მოხდა'); }
     finally { setLoading(false); }
   };
 
-  // ─── User handlers ────────────────────────────────────────────────────────
+  const fetchNfc = async (gId?: string) => {
+    const url = gId ? `/admin/users/nfc?gym_id=${gId}` : '/admin/users/nfc';
+    const { data } = await api.get(url);
+    setNfcUsers(data.users || []);
+  };
+
   const handleAddUser = async () => {
     if (!userForm.email || !userForm.password || !userForm.name || !userForm.gym_id) {
       toast.error('ყველა ველი სავალდებულოა'); return;
@@ -71,7 +80,7 @@ export default function AdminPage() {
     try {
       await api.post('/admin/users/register', { ...userForm, gym_id: Number(userForm.gym_id) });
       toast.success('მომხმარებელი დარეგისტრირდა!');
-      setUserForm({ email:'', password:'', name:'', gym_id:'' });
+      setUserForm({ email:'', password:'', name:'', gym_id:'', nfc_order: false });
       setShowAddUser(false); fetchAll();
     } catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
   };
@@ -79,10 +88,11 @@ export default function AdminPage() {
   const handleEditUser = async (id: string) => {
     try {
       const payload: any = {};
-      if (editForm.name)    payload.name     = editForm.name;
-      if (editForm.email)   payload.email    = editForm.email;
-      if (editForm.password)payload.password = editForm.password;
+      if (editForm.name)     payload.name     = editForm.name;
+      if (editForm.email)    payload.email    = editForm.email;
+      if (editForm.password) payload.password = editForm.password;
       if (editForm.gym_id && isSuperAdmin) payload.gym_id = Number(editForm.gym_id);
+      payload.nfc_order = editForm.nfc_order;
       await api.patch(`/admin/users/${id}`, payload);
       toast.success('განახლდა!'); setEditingUser(null); fetchAll();
     } catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
@@ -101,7 +111,14 @@ export default function AdminPage() {
     catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
   };
 
-  // ─── Gym handlers ────────────────────────────────────────────────────────
+  const handleNfcConfirm = async (id: string) => {
+    try {
+      await api.patch(`/admin/users/${id}/nfc-confirm`);
+      toast.success('✅ NFC შეკვეთა დადასტურდა!');
+      fetchNfc(nfcGymFilter);
+    } catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
+  };
+
   const handleAddGym = async () => {
     if (!gymForm.name || !gymForm.admin_email || !gymForm.admin_password || !gymForm.admin_name) {
       toast.error('სავალდებულო ველები შეავსე'); return;
@@ -115,11 +132,9 @@ export default function AdminPage() {
   };
 
   const handleDeleteGym = async (id: number) => {
-    if (!confirm('დარბაზის წაშლა? ყველა მომხმარებელი გათიშული დარჩება.')) return;
-    try {
-      await api.delete(`/admin/gyms/${id}`);
-      toast.success('დარბაზი წაიშალა'); fetchAll();
-    } catch (err: any) { toast.error(err.response?.data?.error || 'სერვერის შეცდომა — სცადეთ კვლავ'); }
+    if (!confirm('დარბაზის წაშლა?')) return;
+    try { await api.delete(`/admin/gyms/${id}`); toast.success('დარბაზი წაიშალა'); fetchAll(); }
+    catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
   };
 
   const handleToggleGym = async (gym: any) => {
@@ -137,7 +152,6 @@ export default function AdminPage() {
     } catch {}
   };
 
-  // ─── Banner handlers ──────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -154,12 +168,26 @@ export default function AdminPage() {
     if (!bannerForm.image_url) { toast.error('ბანერის სურათი სავალდებულოა'); return; }
     setUploadingBanner(true);
     try {
-      await api.post('/ads', bannerForm);
+      let imageUrl = bannerForm.image_url;
+      if (bannerForm.image_url.startsWith('data:')) {
+        const formData = new FormData();
+        formData.append('file', bannerForm.image_url);
+        formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
+        formData.append('folder', 'fitprice-banners');
+        const res = await fetch(
+          `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
+          { method: 'POST', body: formData }
+        );
+        const data = await res.json();
+        if (!data.secure_url) throw new Error('ატვირთვა ვერ მოხდა');
+        imageUrl = data.secure_url;
+      }
+      await api.post('/ads', { title: bannerForm.title, image_url: imageUrl, link_url: bannerForm.link_url });
       toast.success('ბანერი დაემატა! ✅');
       setBannerForm({ title:'', image_url:'', link_url:'' });
       setBannerPreview('');
       fetchAll();
-    } catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
+    } catch (err: any) { toast.error(err.message || err.response?.data?.error || 'შეცდომა'); }
     finally { setUploadingBanner(false); }
   };
 
@@ -176,7 +204,6 @@ export default function AdminPage() {
     } catch { toast.error('შეცდომა'); }
   };
 
-  // ─── Password ─────────────────────────────────────────────────────────────
   const handleChangePassword = async () => {
     if (pwdForm.new_password !== pwdForm.confirm) { toast.error('პაროლები არ ემთხვევა'); return; }
     try {
@@ -188,12 +215,18 @@ export default function AdminPage() {
 
   if (!user) return null;
 
+  // დარბაზის ფილტრი users-ისთვის
+  const filteredUsers = gymFilter
+    ? users.filter(u => String(u.gym_id) === gymFilter)
+    : users;
+
   const tabs = [
     { key:'users',   label:`მომხმარებლები (${users.length})`, icon: Users },
     { key:'gyms',    label:`დარბაზები (${gyms.length})`,      icon: Building2 },
     ...(isSuperAdmin ? [
-      { key:'banners', label:`ბანერები (${ads.length})`, icon: Image },
-      { key:'password',label:'პაროლი',                   icon: Lock  },
+      { key:'nfc',     label:`NFC პროდუქტი (${nfcUsers.length})`, icon: Nfc },
+      { key:'banners', label:`ბანერები (${ads.length})`,           icon: Image },
+      { key:'password',label:'პაროლი',                             icon: Lock },
     ] : []),
   ];
 
@@ -246,6 +279,23 @@ export default function AdminPage() {
             {/* ── USERS ── */}
             {tab === 'users' && (
               <div className="space-y-4">
+                {/* დარბაზის ფილტრი */}
+                {isSuperAdmin && gyms.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <Filter size={15} className="text-gray-400" />
+                    <select className="input w-48 text-sm" value={gymFilter}
+                      onChange={e => setGymFilter(e.target.value)}>
+                      <option value="">ყველა დარბაზი</option>
+                      {gyms.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                    {gymFilter && (
+                      <button onClick={() => setGymFilter('')} className="text-xs text-gray-400 hover:text-gray-600">
+                        გასუფთავება ×
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {showAddUser && (
                   <div className="card border-2 border-primary-200 bg-primary-50/30">
                     <div className="flex items-center justify-between mb-4">
@@ -276,23 +326,35 @@ export default function AdminPage() {
                             <option key={g.id} value={g.id}>{g.name}</option>
                           ))}
                         </select></div>
+                      <div className="col-span-2">
+                        <label className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl cursor-pointer border border-blue-100 hover:bg-blue-100 transition">
+                          <input type="checkbox" checked={userForm.nfc_order}
+                            onChange={e => setUserForm({...userForm, nfc_order: e.target.checked})}
+                            className="w-4 h-4 accent-blue-600" />
+                          <div className="flex items-center gap-2">
+                            <Nfc size={15} className="text-blue-600" />
+                            <span className="text-sm font-medium text-blue-800">NFC პროდუქტის შეკვეთა</span>
+                          </div>
+                        </label>
+                      </div>
                     </div>
                     <button onClick={handleAddUser} className="btn-primary mt-4 flex items-center gap-2">
                       <Plus size={15}/> დარეგისტრირება
                     </button>
                   </div>
                 )}
+
                 <div className="card p-0 overflow-hidden">
                   <table className="w-full">
                     <thead className="bg-gray-50 border-b border-gray-100">
                       <tr>
-                        {['მომხმარებელი','დარბაზი','სტატუსი','თარიღი','მოქმედება'].map(h => (
+                        {['მომხმარებელი','დარბაზი','სტატუსი','NFC','თარიღი','მოქმედება'].map(h => (
                           <th key={h} className={clsx('px-4 py-3 text-xs font-medium text-gray-500', h === 'მოქმედება' ? 'text-right' : 'text-left')}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-50">
-                      {users.map(u => (
+                      {filteredUsers.map(u => (
                         <>
                           <tr key={u.id} className={clsx('hover:bg-gray-50 transition', u.is_suspended && 'opacity-60')}>
                             <td className="px-4 py-3">
@@ -313,6 +375,14 @@ export default function AdminPage() {
                                 {u.role === 'gym_admin' && <span className="tag bg-blue-50 text-blue-600">🏋️ ადმინი</span>}
                               </div>
                             </td>
+                            <td className="px-4 py-3">
+                              {u.nfc_order ? (
+                                <span className={clsx('tag text-xs',
+                                  u.nfc_status === 'confirmed' ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-600')}>
+                                  {u.nfc_status === 'confirmed' ? '✅ დადასტურდა' : '⏳ მოლოდინში'}
+                                </span>
+                              ) : <span className="text-xs text-gray-300">—</span>}
+                            </td>
                             <td className="px-4 py-3 text-xs text-gray-400">
                               {new Date(u.created_at).toLocaleDateString('ka-GE')}
                             </td>
@@ -324,7 +394,7 @@ export default function AdminPage() {
                                     <Eye size={14}/>
                                   </button>
                                 )}
-                                <button onClick={() => { setEditingUser(editingUser === u.id ? null : u.id); setEditForm({ name: u.name, email: u.email, password:'', gym_id: u.gym_id || '' }); }}
+                                <button onClick={() => { setEditingUser(editingUser === u.id ? null : u.id); setEditForm({ name: u.name, email: u.email, password:'', gym_id: u.gym_id || '', nfc_order: u.nfc_order || false }); }}
                                   className="p-1.5 text-blue-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition">
                                   <Pencil size={14}/>
                                 </button>
@@ -344,7 +414,7 @@ export default function AdminPage() {
                           </tr>
                           {editingUser === u.id && (
                             <tr key={`edit-${u.id}`} className="bg-blue-50/30">
-                              <td colSpan={5} className="px-4 py-3">
+                              <td colSpan={6} className="px-4 py-3">
                                 <div className="grid grid-cols-4 gap-2">
                                   <div><label className="label text-xs">სახელი</label>
                                     <input className="input text-sm py-1.5" value={editForm.name}
@@ -364,6 +434,13 @@ export default function AdminPage() {
                                       </select></div>
                                   )}
                                 </div>
+                                <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                                  <input type="checkbox" checked={editForm.nfc_order}
+                                    onChange={e => setEditForm({...editForm, nfc_order: e.target.checked})}
+                                    className="w-4 h-4 accent-blue-600" />
+                                  <Nfc size={13} className="text-blue-600" />
+                                  <span className="text-xs text-blue-800 font-medium">NFC პროდუქტის შეკვეთა</span>
+                                </label>
                                 <div className="flex gap-2 mt-2">
                                   <button onClick={() => handleEditUser(u.id)}
                                     className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium">
@@ -379,7 +456,7 @@ export default function AdminPage() {
                       ))}
                     </tbody>
                   </table>
-                  {users.length === 0 && <div className="text-center py-12 text-gray-400 text-sm">მომხმარებლები არ არიან</div>}
+                  {filteredUsers.length === 0 && <div className="text-center py-12 text-gray-400 text-sm">მომხმარებლები არ არიან</div>}
                 </div>
               </div>
             )}
@@ -396,10 +473,10 @@ export default function AdminPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="col-span-2 text-xs font-semibold text-gray-400 uppercase">დარბაზის ინფო</div>
                       {[
-                        { key:'name',        label:'სახელი *',     placeholder:'FitLife თბილისი' },
-                        { key:'address',     label:'მისამართი',    placeholder:'რუსთაველი 15' },
-                        { key:'logo_url',    label:'ლოგო URL',     placeholder:'https://...' },
-                        { key:'photo_url',   label:'ფოტო URL',     placeholder:'https://...' },
+                        { key:'name', label:'სახელი *', placeholder:'FitLife თბილისი' },
+                        { key:'address', label:'მისამართი', placeholder:'რუსთაველი 15' },
+                        { key:'logo_url', label:'ლოგო URL', placeholder:'https://...' },
+                        { key:'photo_url', label:'ფოტო URL', placeholder:'https://...' },
                       ].map(({ key, label, placeholder }) => (
                         <div key={key}>
                           <label className="label">{label}</label>
@@ -414,9 +491,9 @@ export default function AdminPage() {
                       </div>
                       <div className="col-span-2 text-xs font-semibold text-gray-400 uppercase mt-2">ადმინ ანგარიში</div>
                       {[
-                        { key:'admin_name',     label:'ადმინის სახელი *',   placeholder:'ადმინი' },
-                        { key:'admin_email',    label:'ადმინის ელ-ფოსტა *', placeholder:'admin@gym.com', type:'email' },
-                        { key:'admin_password', label:'ადმინის პაროლი *',   placeholder:'მინ. 6 სიმბ.' },
+                        { key:'admin_name', label:'ადმინის სახელი *', placeholder:'ადმინი' },
+                        { key:'admin_email', label:'ადმინის ელ-ფოსტა *', placeholder:'admin@gym.com', type:'email' },
+                        { key:'admin_password', label:'ადმინის პაროლი *', placeholder:'მინ. 6 სიმბ.' },
                       ].map(({ key, label, placeholder, type }) => (
                         <div key={key}>
                           <label className="label">{label}</label>
@@ -435,9 +512,7 @@ export default function AdminPage() {
                     <div key={g.id} className={clsx('card', !g.is_active && 'opacity-70')}>
                       <div className="flex items-start gap-4">
                         <div className="w-16 h-16 bg-gradient-to-br from-primary-100 to-accent-100 rounded-xl flex items-center justify-center shrink-0 overflow-hidden">
-                          {g.photo_url
-                            ? <img src={g.photo_url} alt={g.name} className="w-full h-full object-cover" />
-                            : <Building2 size={24} className="text-primary-300" />}
+                          {g.photo_url ? <img src={g.photo_url} alt={g.name} className="w-full h-full object-cover" /> : <Building2 size={24} className="text-primary-300" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
@@ -488,6 +563,69 @@ export default function AdminPage() {
               </div>
             )}
 
+            {/* ── NFC ── */}
+            {tab === 'nfc' && isSuperAdmin && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Filter size={15} className="text-gray-400" />
+                  <select className="input w-48 text-sm" value={nfcGymFilter}
+                    onChange={e => { setNfcGymFilter(e.target.value); fetchNfc(e.target.value); }}>
+                    <option value="">ყველა დარბაზი</option>
+                    {gyms.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </select>
+                  {nfcGymFilter && (
+                    <button onClick={() => { setNfcGymFilter(''); fetchNfc(); }} className="text-xs text-gray-400 hover:text-gray-600">
+                      გასუფთავება ×
+                    </button>
+                  )}
+                </div>
+
+                <div className="card p-0 overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 border-b border-gray-100">
+                      <tr>
+                        {['მომხმარებელი','დარბაზი','სტატუსი','მოქმედება'].map(h => (
+                          <th key={h} className={clsx('px-4 py-3 text-xs font-medium text-gray-500', h === 'მოქმედება' ? 'text-right' : 'text-left')}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {nfcUsers.map(u => (
+                        <tr key={u.id} className="hover:bg-gray-50 transition">
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-sm text-gray-900">{u.name}</div>
+                            <div className="text-xs text-gray-400">{u.email}</div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{u.gym_name || '—'}</td>
+                          <td className="px-4 py-3">
+                            <span className={clsx('tag text-xs',
+                              u.nfc_status === 'confirmed'
+                                ? 'bg-green-50 text-green-600'
+                                : 'bg-orange-50 text-orange-600')}>
+                              {u.nfc_status === 'confirmed' ? '✅ დაკმაყოფილებული' : '⏳ მოლოდინში'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {u.nfc_status !== 'confirmed' && (
+                              <button onClick={() => handleNfcConfirm(u.id)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition ml-auto">
+                                <Check size={12}/> დადასტურება
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {nfcUsers.length === 0 && (
+                    <div className="text-center py-12 text-gray-400 text-sm">
+                      NFC შეკვეთები არ არის
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* ── BANNERS ── */}
             {tab === 'banners' && isSuperAdmin && (
               <div className="space-y-4">
@@ -528,12 +666,10 @@ export default function AdminPage() {
                     )}
                     <button onClick={handleAddBanner} disabled={uploadingBanner}
                       className="btn-primary flex items-center gap-2">
-                      {uploadingBanner ? <Loader2 size={15} className="animate-spin"/> : <Plus size={15}/>}
-                      ბანერის დამატება
+                      {uploadingBanner ? <><Loader2 size={15} className="animate-spin"/> ვტვირთავ...</> : <><Plus size={15}/> ბანერის დამატება</>}
                     </button>
                   </div>
                 </div>
-
                 <div className="space-y-2">
                   {ads.map((ad: any) => (
                     <div key={ad.id} className={clsx('card flex items-center gap-4', !ad.is_active && 'opacity-60')}>
@@ -545,7 +681,7 @@ export default function AdminPage() {
                         {ad.link_url && (
                           <a href={ad.link_url} target="_blank" rel="noopener noreferrer"
                             className="text-xs text-blue-500 hover:underline flex items-center gap-1">
-                            <ExternalLink size={10}/> {ad.link_url.slice(0,40)}...
+                            <ExternalLink size={10}/> {ad.link_url.slice(0,40)}
                           </a>
                         )}
                         <span className={clsx('tag text-xs mt-1', ad.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500')}>
@@ -579,8 +715,8 @@ export default function AdminPage() {
                   </div>
                   {[
                     { key:'current_password', label:'მიმდინარე პაროლი' },
-                    { key:'new_password',     label:'ახალი პაროლი (მინ. 8)' },
-                    { key:'confirm',          label:'გაიმეორე ახალი პაროლი' },
+                    { key:'new_password', label:'ახალი პაროლი (მინ. 8)' },
+                    { key:'confirm', label:'გაიმეორე ახალი პაროლი' },
                   ].map(({ key, label }) => (
                     <div key={key}>
                       <label className="label">{label}</label>
