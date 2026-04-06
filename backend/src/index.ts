@@ -1,4 +1,4 @@
-import 'express-async-errors';
+~import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -68,11 +68,17 @@ const globalLimiter = rateLimit({
 });
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 50,
   message: { error: 'ძალიან ბევრი მოცდილობა. სცადეთ მოგვიანებით.' },
 });
 
 app.use(globalLimiter);
+
+// ბანერის ატვირთვისთვის დიდი ლიმიტი
+app.use('/api/ads/upload', express.json({ limit: '20mb' }));
+app.use('/api/ads/upload', express.urlencoded({ extended: true, limit: '20mb' }));
+
+// დანარჩენი routes
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
@@ -105,5 +111,4 @@ async function bootstrap() {
 }
 
 bootstrap();
-
 export default app;
