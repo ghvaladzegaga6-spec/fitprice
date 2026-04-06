@@ -8,7 +8,7 @@ import { BasketCalculator } from '@/components/basket/BasketCalculator';
 import { BasketResults } from '@/components/basket/BasketResults';
 import { CategoryFilter } from '@/components/basket/CategoryFilter';
 import { PromoPopup } from '@/components/basket/PromoPopup';
-import { AdsRotator } from '@/components/AdsRotator';
+import { AdsBanner } from '@/components/AdsBanner';
 import { RecipeModal } from '@/components/basket/RecipeModal';
 import { clsx } from 'clsx';
 
