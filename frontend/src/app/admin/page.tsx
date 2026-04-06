@@ -151,15 +151,24 @@ export default function AdminPage() {
     try {
       let imageUrl = bannerForm.image_url;
       if (bannerForm.image_url.startsWith('data:')) {
-        const { data } = await api.post('/ads/upload', { image_data: bannerForm.image_url });
-        imageUrl = data.url;
+        const formData = new FormData();
+        formData.append('file', bannerForm.image_url);
+        formData.append('upload_preset', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET!);
+        formData.append('folder', 'fitprice-banners');
+        const res = await fetch(
+          `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload`,
+          { method: 'POST', body: formData }
+        );
+        const data = await res.json();
+        if (!data.secure_url) throw new Error('ატვირთვა ვერ მოხდა');
+        imageUrl = data.secure_url;
       }
       await api.post('/ads', { title: bannerForm.title, image_url: imageUrl, link_url: bannerForm.link_url });
       toast.success('ბანერი დაემატა! ✅');
       setBannerForm({ title:'', image_url:'', link_url:'' });
       setBannerPreview('');
       fetchAll();
-    } catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
+    } catch (err: any) { toast.error(err.message || err.response?.data?.error || 'შეცდომა'); }
     finally { setUploadingBanner(false); }
   };
 
@@ -516,7 +525,7 @@ export default function AdminPage() {
                     {bannerPreview && (
                       <div className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
                         <div className="text-xs text-gray-400 px-3 py-1.5 border-b">გადახედვა:</div>
-                        <img src={bannerPreview} alt="preview" className="w-full h-24 object-cover" />
+                        <img src={bannerPreview} alt="preview" className="w-full h-20 object-cover" />
                       </div>
                     )}
                     <button onClick={handleAddBanner} disabled={uploadingBanner}
