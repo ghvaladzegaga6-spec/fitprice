@@ -36,7 +36,6 @@ export default function AdminPage() {
   const [editForm, setEditForm] = useState({ name:'', email:'', password:'', gym_id:'' });
   const [pwdForm,  setPwdForm]  = useState({ current_password:'', new_password:'', confirm:'' });
 
-  // Banner state
   const [bannerForm, setBannerForm] = useState({ title:'', image_url:'', link_url:'' });
   const [bannerPreview, setBannerPreview] = useState<string>('');
   const [uploadingBanner, setUploadingBanner] = useState(false);
@@ -46,7 +45,6 @@ export default function AdminPage() {
     if (!user) { router.push('/auth/login'); return; }
     if (!['super_admin', 'gym_admin'].includes(user.role)) { router.push('/basket'); return; }
     fetchAll();
-    // Default tab: super_admin → users, gym_admin → users
     setTab('users');
   }, [user]);
 
@@ -63,7 +61,6 @@ export default function AdminPage() {
     finally { setLoading(false); }
   };
 
-  // ─── User handlers ────────────────────────────────────────────────────────
   const handleAddUser = async () => {
     if (!userForm.email || !userForm.password || !userForm.name || !userForm.gym_id) {
       toast.error('ყველა ველი სავალდებულოა'); return;
@@ -79,9 +76,9 @@ export default function AdminPage() {
   const handleEditUser = async (id: string) => {
     try {
       const payload: any = {};
-      if (editForm.name)    payload.name     = editForm.name;
-      if (editForm.email)   payload.email    = editForm.email;
-      if (editForm.password)payload.password = editForm.password;
+      if (editForm.name)     payload.name     = editForm.name;
+      if (editForm.email)    payload.email    = editForm.email;
+      if (editForm.password) payload.password = editForm.password;
       if (editForm.gym_id && isSuperAdmin) payload.gym_id = Number(editForm.gym_id);
       await api.patch(`/admin/users/${id}`, payload);
       toast.success('განახლდა!'); setEditingUser(null); fetchAll();
@@ -101,7 +98,6 @@ export default function AdminPage() {
     catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
   };
 
-  // ─── Gym handlers ────────────────────────────────────────────────────────
   const handleAddGym = async () => {
     if (!gymForm.name || !gymForm.admin_email || !gymForm.admin_password || !gymForm.admin_name) {
       toast.error('სავალდებულო ველები შეავსე'); return;
@@ -115,11 +111,11 @@ export default function AdminPage() {
   };
 
   const handleDeleteGym = async (id: number) => {
-    if (!confirm('დარბაზის წაშლა? ყველა მომხმარებელი გათიშული დარჩება.')) return;
+    if (!confirm('დარბაზის წაშლა?')) return;
     try {
       await api.delete(`/admin/gyms/${id}`);
       toast.success('დარბაზი წაიშალა'); fetchAll();
-    } catch (err: any) { toast.error(err.response?.data?.error || 'სერვერის შეცდომა — სცადეთ კვლავ'); }
+    } catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
   };
 
   const handleToggleGym = async (gym: any) => {
@@ -137,7 +133,6 @@ export default function AdminPage() {
     } catch {}
   };
 
-  // ─── Banner handlers ──────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -154,7 +149,12 @@ export default function AdminPage() {
     if (!bannerForm.image_url) { toast.error('ბანერის სურათი სავალდებულოა'); return; }
     setUploadingBanner(true);
     try {
-      await api.post('/ads', bannerForm);
+      let imageUrl = bannerForm.image_url;
+      if (bannerForm.image_url.startsWith('data:')) {
+        const { data } = await api.post('/ads/upload', { image_data: bannerForm.image_url });
+        imageUrl = data.url;
+      }
+      await api.post('/ads', { title: bannerForm.title, image_url: imageUrl, link_url: bannerForm.link_url });
       toast.success('ბანერი დაემატა! ✅');
       setBannerForm({ title:'', image_url:'', link_url:'' });
       setBannerPreview('');
@@ -176,7 +176,6 @@ export default function AdminPage() {
     } catch { toast.error('შეცდომა'); }
   };
 
-  // ─── Password ─────────────────────────────────────────────────────────────
   const handleChangePassword = async () => {
     if (pwdForm.new_password !== pwdForm.confirm) { toast.error('პაროლები არ ემთხვევა'); return; }
     try {
@@ -200,8 +199,6 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
-
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -226,7 +223,6 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Tabs */}
         <div className="flex border-b border-gray-200 overflow-x-auto">
           {tabs.map(({ key, label, icon: Icon }) => (
             <button key={key} onClick={() => setTab(key as any)}
@@ -243,7 +239,6 @@ export default function AdminPage() {
           <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary-500" size={28} /></div>
         ) : (
           <>
-            {/* ── USERS ── */}
             {tab === 'users' && (
               <div className="space-y-4">
                 {showAddUser && (
@@ -384,7 +379,6 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* ── GYMS ── */}
             {tab === 'gyms' && (
               <div className="space-y-4">
                 {showAddGym && isSuperAdmin && (
@@ -396,10 +390,10 @@ export default function AdminPage() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="col-span-2 text-xs font-semibold text-gray-400 uppercase">დარბაზის ინფო</div>
                       {[
-                        { key:'name',        label:'სახელი *',     placeholder:'FitLife თბილისი' },
-                        { key:'address',     label:'მისამართი',    placeholder:'რუსთაველი 15' },
-                        { key:'logo_url',    label:'ლოგო URL',     placeholder:'https://...' },
-                        { key:'photo_url',   label:'ფოტო URL',     placeholder:'https://...' },
+                        { key:'name', label:'სახელი *', placeholder:'FitLife თბილისი' },
+                        { key:'address', label:'მისამართი', placeholder:'რუსთაველი 15' },
+                        { key:'logo_url', label:'ლოგო URL', placeholder:'https://...' },
+                        { key:'photo_url', label:'ფოტო URL', placeholder:'https://...' },
                       ].map(({ key, label, placeholder }) => (
                         <div key={key}>
                           <label className="label">{label}</label>
@@ -414,9 +408,9 @@ export default function AdminPage() {
                       </div>
                       <div className="col-span-2 text-xs font-semibold text-gray-400 uppercase mt-2">ადმინ ანგარიში</div>
                       {[
-                        { key:'admin_name',     label:'ადმინის სახელი *',   placeholder:'ადმინი' },
-                        { key:'admin_email',    label:'ადმინის ელ-ფოსტა *', placeholder:'admin@gym.com', type:'email' },
-                        { key:'admin_password', label:'ადმინის პაროლი *',   placeholder:'მინ. 6 სიმბ.' },
+                        { key:'admin_name', label:'ადმინის სახელი *', placeholder:'ადმინი' },
+                        { key:'admin_email', label:'ადმინის ელ-ფოსტა *', placeholder:'admin@gym.com', type:'email' },
+                        { key:'admin_password', label:'ადმინის პაროლი *', placeholder:'მინ. 6 სიმბ.' },
                       ].map(({ key, label, placeholder, type }) => (
                         <div key={key}>
                           <label className="label">{label}</label>
@@ -488,7 +482,6 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* ── BANNERS ── */}
             {tab === 'banners' && isSuperAdmin && (
               <div className="space-y-4">
                 <div className="card border-2 border-primary-200 bg-primary-50/30">
@@ -523,17 +516,15 @@ export default function AdminPage() {
                     {bannerPreview && (
                       <div className="rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
                         <div className="text-xs text-gray-400 px-3 py-1.5 border-b">გადახედვა:</div>
-                        <img src={bannerPreview} alt="preview" className="w-full h-20 object-cover" />
+                        <img src={bannerPreview} alt="preview" className="w-full h-24 object-cover" />
                       </div>
                     )}
                     <button onClick={handleAddBanner} disabled={uploadingBanner}
                       className="btn-primary flex items-center gap-2">
-                      {uploadingBanner ? <Loader2 size={15} className="animate-spin"/> : <Plus size={15}/>}
-                      ბანერის დამატება
+                      {uploadingBanner ? <><Loader2 size={15} className="animate-spin"/> ვტვირთავ...</> : <><Plus size={15}/> ბანერის დამატება</>}
                     </button>
                   </div>
                 </div>
-
                 <div className="space-y-2">
                   {ads.map((ad: any) => (
                     <div key={ad.id} className={clsx('card flex items-center gap-4', !ad.is_active && 'opacity-60')}>
@@ -545,7 +536,7 @@ export default function AdminPage() {
                         {ad.link_url && (
                           <a href={ad.link_url} target="_blank" rel="noopener noreferrer"
                             className="text-xs text-blue-500 hover:underline flex items-center gap-1">
-                            <ExternalLink size={10}/> {ad.link_url.slice(0,40)}...
+                            <ExternalLink size={10}/> {ad.link_url.slice(0,40)}
                           </a>
                         )}
                         <span className={clsx('tag text-xs mt-1', ad.is_active ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500')}>
@@ -569,7 +560,6 @@ export default function AdminPage() {
               </div>
             )}
 
-            {/* ── PASSWORD ── */}
             {tab === 'password' && isSuperAdmin && (
               <div className="max-w-sm">
                 <div className="card space-y-4">
@@ -579,8 +569,8 @@ export default function AdminPage() {
                   </div>
                   {[
                     { key:'current_password', label:'მიმდინარე პაროლი' },
-                    { key:'new_password',     label:'ახალი პაროლი (მინ. 8)' },
-                    { key:'confirm',          label:'გაიმეორე ახალი პაროლი' },
+                    { key:'new_password', label:'ახალი პაროლი (მინ. 8)' },
+                    { key:'confirm', label:'გაიმეორე ახალი პაროლი' },
                   ].map(({ key, label }) => (
                     <div key={key}>
                       <label className="label">{label}</label>
