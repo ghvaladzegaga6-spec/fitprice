@@ -52,6 +52,14 @@ export default function BasketPage() {
 
   return (
     <div className="space-y-6 animate-in">
+
+      {/* ბანერი ლეპტოპზე — გვერდის ზედა შუაში */}
+      <div className="hidden lg:flex justify-center">
+        <div className="w-full max-w-3xl">
+          <AdsBanner />
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -59,47 +67,28 @@ export default function BasketPage() {
           <p className="text-sm text-gray-500 mt-0.5">შეიყვანეთ კალორიები ან მაკროები — სისტემა გაგიჩენს ყველაზე იაფ კომბინაციას</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* ვეგანური ღილაკი */}
           <button
-            onClick={() => {
-              setVeganMode(!veganMode);
-              setExcludedCats([]);
-              toast.success(veganMode ? '🥩 ჩვეულებრივი რეჟიმი' : '🌱 ვეგანური რეჟიმი');
-            }}
-            className={clsx(
-              'flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all border',
-              veganMode
-                ? 'bg-green-500 text-white border-green-500 shadow-md'
-                : 'bg-white text-green-700 border-green-300 hover:bg-green-50'
-            )}
-          >
+            onClick={() => { setVeganMode(!veganMode); setExcludedCats([]); toast.success(veganMode ? '🥩 ჩვეულებრივი რეჟიმი' : '🌱 ვეგანური რეჟიმი'); }}
+            className={clsx('flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all border',
+              veganMode ? 'bg-green-500 text-white border-green-500 shadow-md' : 'bg-white text-green-700 border-green-300 hover:bg-green-50')}>
             <Leaf size={15} />
             <span className="hidden sm:inline">ვეგანური</span>
           </button>
-
-          <button
-            onClick={() => setShowFilter(!showFilter)}
-            className="btn-secondary flex items-center gap-2 text-sm"
-          >
+          <button onClick={() => setShowFilter(!showFilter)}
+            className="btn-secondary flex items-center gap-2 text-sm">
             <Filter size={15} />
             <span className="hidden sm:inline">ფილტრი</span>
             {excludedCats.length > 0 && (
-              <span className="bg-primary-100 text-primary-700 text-xs px-1.5 py-0.5 rounded-full">
-                -{excludedCats.length}
-              </span>
+              <span className="bg-primary-100 text-primary-700 text-xs px-1.5 py-0.5 rounded-full">-{excludedCats.length}</span>
             )}
           </button>
-          <button
-            onClick={() => setShowPromo(true)}
-            className="btn-secondary flex items-center gap-2 text-sm"
-          >
+          <button onClick={() => setShowPromo(true)} className="btn-secondary flex items-center gap-2 text-sm">
             <Gift size={15} />
             <span className="hidden sm:inline">პრომო</span>
           </button>
         </div>
       </div>
 
-      {/* ვეგანური ბანერი */}
       {veganMode && (
         <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-xl text-sm text-green-800">
           <Leaf size={16} className="text-green-600 shrink-0" />
@@ -107,13 +96,8 @@ export default function BasketPage() {
         </div>
       )}
 
-      {/* Category Filter */}
       {showFilter && (
-        <CategoryFilter
-          categories={categories}
-          excluded={excludedCats}
-          onChange={setExcludedCats}
-        />
+        <CategoryFilter categories={categories} excluded={excludedCats} onChange={setExcludedCats} />
       )}
 
       {/* Main Grid */}
@@ -129,7 +113,10 @@ export default function BasketPage() {
             </div>
             <BasketCalculator onSubmit={handleOptimize} isLoading={isLoading} />
           </div>
-          <AdsBanner />
+          {/* ბანერი ტელეფონზე — კალკულატორის ქვეშ */}
+          <div className="lg:hidden">
+            <AdsBanner />
+          </div>
         </div>
 
         {/* Right: Results */}
@@ -141,14 +128,9 @@ export default function BasketPage() {
                   <ShoppingCart size={18} className="text-primary-600" />
                   <h2 className="font-semibold text-gray-900">კვების კალათი</h2>
                   <span className="tag bg-primary-50 text-primary-700">{basket.length} პროდუქტი</span>
-                  {veganMode && (
-                    <span className="tag bg-green-50 text-green-700 text-[10px]">🌱 ვეგანური</span>
-                  )}
+                  {veganMode && <span className="tag bg-green-50 text-green-700 text-[10px]">🌱 ვეგანური</span>}
                 </div>
-                <button
-                  onClick={() => setShowRecipe(true)}
-                  className="btn-secondary flex items-center gap-2 text-sm"
-                >
+                <button onClick={() => setShowRecipe(true)} className="btn-secondary flex items-center gap-2 text-sm">
                   <ChefHat size={15} />
                   <span className="hidden sm:inline">რეცეპტი</span>
                 </button>
@@ -169,18 +151,11 @@ export default function BasketPage() {
       </div>
 
       {showPromo && (
-        <PromoPopup
-          onClose={() => setShowPromo(false)}
-          onSelect={(ids) => { setForcePromo(ids); setShowPromo(false); toast.success('პრომო პროდუქტები დამატებულია'); }}
-        />
+        <PromoPopup onClose={() => setShowPromo(false)}
+          onSelect={(ids) => { setForcePromo(ids); setShowPromo(false); toast.success('პრომო პროდუქტები დამატებულია'); }} />
       )}
-
       {showRecipe && (
-        <RecipeModal
-          basket={basket}
-          totals={totals}
-          onClose={() => setShowRecipe(false)}
-        />
+        <RecipeModal basket={basket} totals={totals} onClose={() => setShowRecipe(false)} />
       )}
     </div>
   );
