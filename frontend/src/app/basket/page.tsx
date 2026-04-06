@@ -129,7 +129,7 @@ export default function BasketPage() {
             </div>
             <BasketCalculator onSubmit={handleOptimize} isLoading={isLoading} />
           </div>
-          <AdsRotator />
+          <AdsBanner />
         </div>
 
         {/* Right: Results */}
