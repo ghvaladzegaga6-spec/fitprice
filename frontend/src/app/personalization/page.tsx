@@ -15,29 +15,29 @@ import { clsx } from 'clsx';
 import Link from 'next/link';
 
 const ACTIVITY_LABELS: Record<string, string> = {
-  low: 'Low — office, almost no movement',
-  medium: 'Medium — 7-10k steps or 2-3 workouts/week',
-  high: 'High — physical work or daily training',
+  low:    'დაბალი — ოფისი, თითქმის არ მოძრაობ',
+  medium: 'საშუალო — 7-10 ათასი ნაბიჯი ან კვირაში 2-3 ვარჯიში',
+  high:   'მაღალი — ფიზიკური შრომა ან ყოველდღიური ვარჯიში',
 };
 const EATING_WINDOW_LABELS: Record<string, string> = {
-  short: 'Short (under 8h) — e.g. 12:00-20:00',
-  standard: 'Standard (8-12h) — e.g. 09:00-21:00',
-  long: 'Long (12h+) — e.g. 07:00-23:00',
+  short:    'მოკლე (8 საათამდე) — მაგ. 12:00-20:00',
+  standard: 'სტანდარტული (8-12 სთ) — მაგ. 09:00-21:00',
+  long:     'გრძელი (12+ სთ) — მაგ. 07:00-23:00',
 };
 const CARB_LABELS: Record<string, string> = {
-  high: 'Energized, feel great after carbs',
-  low: 'Tired or hungry again soon after',
-  neutral: 'No noticeable reaction',
+  high:    'კარგი ენერგია — ნახშირწყლების შემდეგ კარგად ვგრძნობ თავს',
+  low:     'სწრაფად მშია — ნახშირწყლების შემდეგ მალე კვლავ მშია',
+  neutral: 'შეუმჩნეველი — განსაკუთრებული რეაქცია არ მაქვს',
 };
 const HUNGER_LABELS: Record<string, string> = {
-  morning: 'Morning, right after waking up',
-  evening: 'Evening, after work',
-  even: 'Evenly throughout the day',
+  morning: 'დილით — გაღვიძებისთანავე',
+  evening: 'საღამოს — სამსახურის შემდეგ',
+  even:    'თანაბრად — მთელი დღის განმავლობაში',
 };
 const GOAL_CONFIG = {
-  lose: { label: 'Weight Loss', icon: TrendingDown, color: 'text-blue-600 bg-blue-50 border-blue-200', info: '0.5-1% body weight per week' },
-  gain: { label: 'Weight Gain', icon: TrendingUp, color: 'text-green-600 bg-green-50 border-green-200', info: '1-1.5kg per month (half muscle)' },
-  maintain: { label: 'Maintain', icon: Minus, color: 'text-gray-600 bg-gray-50 border-gray-200', info: 'Weight variation of +/-1kg is normal' },
+  lose:     { label: 'წონის კლება',       icon: TrendingDown, color: 'text-blue-600 bg-blue-50 border-blue-200',  info: 'კვირაში სხეულის წონის 0.5-1%' },
+  gain:     { label: 'წონის მომატება',    icon: TrendingUp,   color: 'text-green-600 bg-green-50 border-green-200', info: 'თვეში 1-1.5 კგ (ნახევარი კუნთი)' },
+  maintain: { label: 'წონის შენარჩუნება', icon: Minus,        color: 'text-gray-600 bg-gray-50 border-gray-200',   info: '+/-1 კგ ვარიაცია ნორმალურია' },
 };
 
 export default function PersonalizationPage() {
@@ -72,13 +72,14 @@ export default function PersonalizationPage() {
   });
 
   useEffect(() => {
-    // always load gyms for public display
     api.get('/admin/gyms/public').then(({ data }) => setGyms(data.gyms)).catch(() => {});
-    basketApi.categories().then(({ data }) => setCategories(data.categories)).catch(() => {});
-
+    if (veganMode) {
+      basketApi.veganCategories().then(({ data }) => setCategories(data.categories)).catch(() => {});
+    } else {
+      basketApi.categories().then(({ data }) => setCategories(data.categories)).catch(() => {});
+    }
     if (!user) { setProfileLoading(false); return; }
 
-    // check if suspended
     api.get('/auth/me').then(({ data }) => {
       setIsSuspended(data.user?.is_suspended || false);
     }).catch(() => {});
@@ -98,18 +99,14 @@ export default function PersonalizationPage() {
         setValue('carb_sensitivity', p.carb_sensitivity);
         setValue('hunger_peak', p.hunger_peak);
         setVeganMode(p.vegan_mode);
-
-        // if profile exists, auto-load daily plan
-        if (p.quiz_completed) {
-          loadDailyPlan();
-        }
+        if (p.quiz_completed) loadDailyPlan();
       }
     }).catch(() => {}).finally(() => setProfileLoading(false));
 
     api.get('/personalization/checkin/needed').then(({ data }) => {
       setCheckinNeeded(data.needed);
     }).catch(() => {});
-  }, [user]);
+  }, [user, veganMode]);
 
   const loadDailyPlan = async () => {
     try {
@@ -130,15 +127,11 @@ export default function PersonalizationPage() {
     setLoading(true);
     try {
       const payload = {
-        gender: data.gender,
-        age: Number(data.age),
-        weight_kg: Number(data.weight_kg),
-        height_cm: Number(data.height_cm),
-        activity_level: data.activity_level,
-        goal: data.goal,
+        gender: data.gender, age: Number(data.age),
+        weight_kg: Number(data.weight_kg), height_cm: Number(data.height_cm),
+        activity_level: data.activity_level, goal: data.goal,
         target_weight_kg: data.target_weight_kg ? Number(data.target_weight_kg) : undefined,
-        eating_window: data.eating_window,
-        carb_sensitivity: data.carb_sensitivity,
+        eating_window: data.eating_window, carb_sensitivity: data.carb_sensitivity,
         hunger_peak: data.hunger_peak,
         calorie_multiplier: savedProfile?.calorie_multiplier || 1.0,
         vegan_mode: veganMode,
@@ -146,18 +139,15 @@ export default function PersonalizationPage() {
       const { data: res } = await api.post('/personalization/calculate', payload);
       setResult(res);
       setSavedProfile({ ...payload, ...res, quiz_completed: true });
-      toast.success('Calculation complete!');
+      toast.success('გათვლა დასრულდა! ✅');
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || err.response?.data?.error || 'Error');
-    } finally {
-      setLoading(false);
-    }
+      toast.error(err.response?.data?.detail || err.response?.data?.error || 'შეცდომა');
+    } finally { setLoading(false); }
   };
 
   const handleGenerateBasket = async () => {
     if (!result) return;
-    setBasketLoading(true);
-    setBaskLoading(true);
+    setBasketLoading(true); setBaskLoading(true);
     try {
       const { data } = await basketApi.optimize({
         mode: 'calories',
@@ -165,15 +155,13 @@ export default function PersonalizationPage() {
         calorie_ratio: result.calorie_ratio || { protein: 0.30, fat: 0.30, carbs: 0.40 },
         excluded_categories: excludedCats,
         vegan_only: veganMode,
+        gym_only: true,
       });
       setBasket(data.basket, data.totals, data.targets);
-      toast.success(`Basket ready! Total: ${data.totals.price.toFixed(2)} GEL`);
+      toast.success(`კალათი მზადაა! სულ: ${data.totals.price.toFixed(2)} ₾`);
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Basket error');
-    } finally {
-      setBasketLoading(false);
-      setBaskLoading(false);
-    }
+      toast.error(err.response?.data?.detail || 'კალათის შეცდომა');
+    } finally { setBasketLoading(false); setBaskLoading(false); }
   };
 
   const onCheckin = async (data: any) => {
@@ -184,17 +172,13 @@ export default function PersonalizationPage() {
         energy_level: Number(data.energy_level),
         hunger_level: Number(data.hunger_level),
       });
-      setShowCheckin(false);
-      setCheckinNeeded(false);
+      setShowCheckin(false); setCheckinNeeded(false);
       if (res.warning) toast.error(res.warning, { duration: 6000 });
       if (res.energy_note) toast(res.energy_note, { duration: 5000 });
       toast.success(res.adjustment_reason + ' ✅');
       if (result) setResult({ ...result, adjusted_calories: res.new_calories });
-    } catch {
-      toast.error('Check-in error');
-    } finally {
-      setCheckinLoading(false);
-    }
+    } catch { toast.error('Check-in შეცდომა'); }
+    finally { setCheckinLoading(false); }
   };
 
   if (profileLoading) {
@@ -205,435 +189,471 @@ export default function PersonalizationPage() {
     );
   }
 
-  // Suspended user
+  // შეჩერებული მომხმარებელი
   if (user && isSuspended) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center px-4">
         <div className="w-20 h-20 bg-red-50 rounded-2xl flex items-center justify-center mb-6">
           <Lock size={32} className="text-red-400" />
         </div>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Access Suspended</h2>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">წვდომა შეჩერებულია</h2>
         <p className="text-gray-500 text-sm max-w-sm">
-          Your access has been temporarily suspended. Please renew your gym membership and contact the administrator.
+          თქვენი წვდომა დროებით შეჩერებულია. განაახლეთ დარბაზის გაწევრიანება და დაუკავშირდით ადმინისტრატორს.
         </p>
       </div>
     );
   }
 
-  // Not logged in — show gym list
+  // არ არის შესული
   if (!user) {
     return (
-      <div className="space-y-8 py-6 px-4 max-w-4xl mx-auto">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-primary-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <Lock size={32} className="text-primary-400" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">Personalization Service</h2>
-          <p className="text-gray-500 text-sm max-w-md mx-auto leading-relaxed">
-            To access this service, you must be a member of a gym that partners with <strong>FITPRICE</strong>.
-            Sign in with your account or contact your gym administrator.
-          </p>
-          <Link href="/auth/login" className="btn-primary inline-flex items-center gap-2 mt-6">
-            <LogIn size={16} /> Sign In
-          </Link>
-        </div>
+      <div className="relative min-h-screen overflow-hidden">
+        {/* ლამაზი ბექგრაუნდი */}
+        <div className="absolute inset-0 bg-gradient-to-br from-primary-600 via-accent-500 to-primary-800 opacity-10 pointer-events-none" />
+        <div className="absolute top-0 left-0 w-96 h-96 bg-primary-400 rounded-full mix-blend-multiply filter blur-3xl opacity-10 pointer-events-none" />
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-accent-400 rounded-full mix-blend-multiply filter blur-3xl opacity-10 pointer-events-none" />
 
-        {gyms.length > 0 && (
-          <div>
-            <h3 className="text-center font-semibold text-gray-700 mb-5 text-lg">Our Partner Gyms</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {gyms.map(gym => (
-                <div key={gym.id} className="card hover:shadow-md transition-shadow">
-                  {gym.photo_url ? (
-                    <img src={gym.photo_url} alt={gym.name} className="w-full h-40 object-cover rounded-xl mb-3" />
-                  ) : (
-                    <div className="w-full h-40 bg-gradient-to-br from-primary-100 to-accent-100 rounded-xl mb-3 flex items-center justify-center">
-                      {gym.logo_url ? (
-                        <img src={gym.logo_url} alt={gym.name} className="h-16 object-contain" />
-                      ) : (
-                        <Building2 size={40} className="text-primary-300" />
-                      )}
-                    </div>
-                  )}
-                  <h4 className="font-semibold text-gray-900">{gym.name}</h4>
-                  {gym.address && <p className="text-xs text-gray-500 mt-1">📍 {gym.address}</p>}
-                  {gym.description && <p className="text-xs text-gray-400 mt-2">{gym.description}</p>}
-                </div>
-              ))}
+        <div className="relative space-y-8 py-6 px-4 max-w-4xl mx-auto">
+          <div className="text-center">
+            <div className="w-24 h-24 bg-gradient-to-br from-primary-500 to-accent-500 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl">
+              <Brain size={40} className="text-white" />
             </div>
+            <h2 className="text-3xl font-display font-bold text-gray-900 mb-3">
+              პერსონალიზაციის სერვისი
+            </h2>
+            <p className="text-gray-500 text-base max-w-md mx-auto leading-relaxed">
+              ამ სერვისით სარგებლობისთვის აუცილებელია იყოთ
+              <strong> FITPRICE-თან</strong> თანამშრომელი დარბაზის წევრი.
+              შედით სისტემაში ან დაუკავშირდით თქვენი დარბაზის ადმინისტრატორს.
+            </p>
+            <Link href="/auth/login" className="btn-primary inline-flex items-center gap-2 mt-6 px-8 py-3 text-base">
+              <LogIn size={18} /> სისტემაში შესვლა
+            </Link>
           </div>
-        )}
+
+          {gyms.length > 0 && (
+            <div>
+              <h3 className="text-center font-semibold text-gray-700 mb-5 text-lg">
+                🏋️ ჩვენი პარტნიორი დარბაზები
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {gyms.map(gym => (
+                  <div key={gym.id} className="card hover:shadow-lg transition-all hover:-translate-y-1">
+                    {gym.photo_url ? (
+                      <img src={gym.photo_url} alt={gym.name} className="w-full h-40 object-cover rounded-xl mb-3" />
+                    ) : (
+                      <div className="w-full h-40 bg-gradient-to-br from-primary-100 to-accent-100 rounded-xl mb-3 flex items-center justify-center">
+                        {gym.logo_url
+                          ? <img src={gym.logo_url} alt={gym.name} className="h-16 object-contain" />
+                          : <Building2 size={40} className="text-primary-300" />}
+                      </div>
+                    )}
+                    <h4 className="font-semibold text-gray-900">{gym.name}</h4>
+                    {gym.address && <p className="text-xs text-gray-500 mt-1">📍 {gym.address}</p>}
+                    {gym.description && <p className="text-xs text-gray-400 mt-2">{gym.description}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   }
 
-  // Logged in user — show personalization
-  // If profile already saved, show results directly
   const profileCompleted = savedProfile?.quiz_completed;
 
   return (
-    <div className="space-y-6 animate-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-bold text-gray-900">Personalization</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {profileCompleted
-              ? `Profile saved · ${savedProfile?.goal === 'lose' ? 'Weight Loss' : savedProfile?.goal === 'gain' ? 'Weight Gain' : 'Maintenance'}`
-              : 'Fill in the questionnaire to get your personal plan'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {profileCompleted && (
-            <Link href="/profile" className="btn-secondary text-sm flex items-center gap-1">
-              Update Profile
-            </Link>
-          )}
-          {checkinNeeded && (
-            <button onClick={() => setShowCheckin(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium animate-pulse">
-              <Scale size={15} /> Weekly Check-in
-            </button>
-          )}
-        </div>
+    <div className="relative min-h-screen">
+      {/* ბექგრაუნდი */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+        <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary-400 rounded-full mix-blend-multiply filter blur-3xl opacity-5" />
+        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-accent-400 rounded-full mix-blend-multiply filter blur-3xl opacity-5" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary-200 rounded-full mix-blend-multiply filter blur-3xl opacity-5" />
       </div>
 
-      {showCheckin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="card w-full max-w-sm shadow-2xl">
-            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Scale size={18} className="text-primary-600" /> Weekly Check
-            </h2>
-            <form onSubmit={handleC(onCheckin)} className="space-y-4">
-              <div>
-                <label className="label">Current weight (kg)</label>
-                <input type="number" step="0.1" className="input" placeholder="e.g. 78.5"
-                  {...regC('current_weight_kg', { required: true })} />
-              </div>
-              <div>
-                <label className="label">Energy level this week</label>
-                <div className="flex gap-2">
-                  {[1,2,3,4,5].map(n => (
-                    <label key={n} className="flex-1 cursor-pointer">
-                      <input type="radio" value={n} {...regC('energy_level')} className="peer sr-only" />
-                      <div className="text-center py-2 rounded-lg border text-sm transition-all peer-checked:bg-primary-50 peer-checked:border-primary-400 peer-checked:text-primary-700 border-gray-200 text-gray-500">{n}</div>
-                    </label>
-                  ))}
-                </div>
-                <div className="flex justify-between text-xs text-gray-400 mt-1"><span>Low</span><span>High</span></div>
-              </div>
-              <div>
-                <label className="label">Hunger level</label>
-                <div className="flex gap-2">
-                  {[1,2,3,4,5].map(n => (
-                    <label key={n} className="flex-1 cursor-pointer">
-                      <input type="radio" value={n} {...regC('hunger_level')} className="peer sr-only" />
-                      <div className="text-center py-2 rounded-lg border text-sm transition-all peer-checked:bg-primary-50 peer-checked:border-primary-400 peer-checked:text-primary-700 border-gray-200 text-gray-500">{n}</div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setShowCheckin(false)} className="btn-secondary flex-1">Cancel</button>
-                <button type="submit" disabled={checkinLoading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-                  {checkinLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} Save
-                </button>
-              </div>
-            </form>
+      <div className="space-y-6 animate-in relative">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-gray-900">პერსონალიზაცია</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {profileCompleted
+                ? `პროფილი შენახულია · ${savedProfile?.goal === 'lose' ? 'წონის კლება' : savedProfile?.goal === 'gain' ? 'წონის მომატება' : 'შენარჩუნება'}`
+                : 'შეავსე კითხვარი პერსონალური გეგმის მისაღებად'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {profileCompleted && (
+              <Link href="/profile" className="btn-secondary text-sm flex items-center gap-1">
+                პროფილის განახლება
+              </Link>
+            )}
+            {checkinNeeded && (
+              <button onClick={() => setShowCheckin(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium animate-pulse">
+                <Scale size={15} /> ყოველკვირეული შემოწმება
+              </button>
+            )}
           </div>
         </div>
-      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {!profileCompleted && (
-          <div className="lg:col-span-2">
-            <div className="card">
-              <div className="flex items-center gap-2 mb-5">
-                <div className="w-8 h-8 bg-accent-50 rounded-lg flex items-center justify-center">
-                  <Brain size={16} className="text-accent-600" />
+        {/* Check-in modal */}
+        {showCheckin && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <div className="card w-full max-w-sm shadow-2xl">
+              <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Scale size={18} className="text-primary-600" /> ყოველკვირეული შემოწმება
+              </h2>
+              <form onSubmit={handleC(onCheckin)} className="space-y-4">
+                <div>
+                  <label className="label">მიმდინარე წონა (კგ)</label>
+                  <input type="number" step="0.1" className="input" placeholder="მაგ. 78.5"
+                    {...regC('current_weight_kg', { required: true })} />
                 </div>
-                <h2 className="font-semibold text-gray-900">Questionnaire</h2>
-              </div>
-              <div className="flex rounded-xl border border-gray-200 p-1 gap-1 mb-5">
-                {[{ n: 1, label: 'Block I' }, { n: 2, label: 'Block II' }, { n: 3, label: 'Goal' }].map(({ n, label }) => (
-                  <button key={n} type="button" onClick={() => setBlock(n)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${block === n ? 'bg-primary-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}>
-                    {label}
+                <div>
+                  <label className="label">ენერგიის დონე ამ კვირას</label>
+                  <div className="flex gap-2">
+                    {[1,2,3,4,5].map(n => (
+                      <label key={n} className="flex-1 cursor-pointer">
+                        <input type="radio" value={n} {...regC('energy_level')} className="peer sr-only" />
+                        <div className="text-center py-2 rounded-lg border text-sm transition-all peer-checked:bg-primary-50 peer-checked:border-primary-400 peer-checked:text-primary-700 border-gray-200 text-gray-500">{n}</div>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-400 mt-1"><span>დაბალი</span><span>მაღალი</span></div>
+                </div>
+                <div>
+                  <label className="label">შიმშილის დონე</label>
+                  <div className="flex gap-2">
+                    {[1,2,3,4,5].map(n => (
+                      <label key={n} className="flex-1 cursor-pointer">
+                        <input type="radio" value={n} {...regC('hunger_level')} className="peer sr-only" />
+                        <div className="text-center py-2 rounded-lg border text-sm transition-all peer-checked:bg-primary-50 peer-checked:border-primary-400 peer-checked:text-primary-700 border-gray-200 text-gray-500">{n}</div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setShowCheckin(false)} className="btn-secondary flex-1">გაუქმება</button>
+                  <button type="submit" disabled={checkinLoading} className="btn-primary flex-1 flex items-center justify-center gap-2">
+                    {checkinLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} შენახვა
                   </button>
-                ))}
-              </div>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                {block === 1 && (
-                  <>
-                    <div>
-                      <label className="label">Gender</label>
-                      <div className="flex gap-2">
-                        {[{ v: 'male', l: 'Male' }, { v: 'female', l: 'Female' }].map(({ v, l }) => (
-                          <label key={v} className="flex-1 cursor-pointer">
-                            <input type="radio" value={v} {...register('gender')} className="peer sr-only" />
-                            <div className="text-center py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium transition-all peer-checked:border-primary-400 peer-checked:bg-primary-50 peer-checked:text-primary-700 text-gray-600">{l}</div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      {[{ name: 'age', label: 'Age', placeholder: '30' }, { name: 'height_cm', label: 'Height (cm)', placeholder: '175' }, { name: 'weight_kg', label: 'Weight (kg)', placeholder: '75' }].map(({ name, label, placeholder }) => (
-                        <div key={name}>
-                          <label className="label text-xs">{label}</label>
-                          <input type="number" className="input text-sm py-2" placeholder={placeholder} {...register(name)} />
-                        </div>
-                      ))}
-                    </div>
-                    <div>
-                      <label className="label">Daily activity</label>
-                      <div className="space-y-2">
-                        {Object.entries(ACTIVITY_LABELS).map(([v, l]) => (
-                          <label key={v} className="cursor-pointer">
-                            <input type="radio" value={v} {...register('activity_level')} className="peer sr-only" />
-                            <div className="flex items-start gap-2 p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200">
-                              <span className="text-gray-700">{l}</span>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => setBlock(2)} className="btn-primary w-full">Next →</button>
-                  </>
-                )}
-                {block === 2 && (
-                  <>
-                    <div>
-                      <label className="label">Eating window</label>
-                      <div className="space-y-2">
-                        {Object.entries(EATING_WINDOW_LABELS).map(([v, l]) => (
-                          <label key={v} className="cursor-pointer">
-                            <input type="radio" value={v} {...register('eating_window')} className="peer sr-only" />
-                            <div className="p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200 text-gray-700">{l}</div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="label">Carb sensitivity</label>
-                      <div className="space-y-2">
-                        {Object.entries(CARB_LABELS).map(([v, l]) => (
-                          <label key={v} className="cursor-pointer">
-                            <input type="radio" value={v} {...register('carb_sensitivity')} className="peer sr-only" />
-                            <div className="p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200 text-gray-700">{l}</div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="label">Hunger peak</label>
-                      <div className="space-y-2">
-                        {Object.entries(HUNGER_LABELS).map(([v, l]) => (
-                          <label key={v} className="cursor-pointer">
-                            <input type="radio" value={v} {...register('hunger_peak')} className="peer sr-only" />
-                            <div className="p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200 text-gray-700">{l}</div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setBlock(1)} className="btn-secondary flex-1">← Back</button>
-                      <button type="button" onClick={() => setBlock(3)} className="btn-primary flex-1">Next →</button>
-                    </div>
-                  </>
-                )}
-                {block === 3 && (
-                  <>
-                    <div>
-                      <label className="label">Goal</label>
-                      <div className="space-y-2">
-                        {Object.entries(GOAL_CONFIG).map(([v, { label, icon: Icon, color, info }]) => (
-                          <label key={v} className="cursor-pointer">
-                            <input type="radio" value={v} {...register('goal')} className="peer sr-only" />
-                            <div className={clsx('flex items-start gap-3 p-3 rounded-xl border transition-all peer-checked:ring-2 peer-checked:ring-primary-400', goal === v ? color : 'border-gray-100 hover:border-gray-200')}>
-                              <Icon size={16} className="mt-0.5 shrink-0" />
-                              <div>
-                                <div className="text-sm font-medium">{label}</div>
-                                <div className="text-xs text-gray-500 mt-0.5">{info}</div>
-                              </div>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    {(goal === 'lose' || goal === 'gain') && (
-                      <div>
-                        <label className="label">Target weight (kg) — optional</label>
-                        <input type="number" className="input text-sm" placeholder="e.g. 70" {...register('target_weight_kg')} />
-                      </div>
-                    )}
-                    <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 cursor-pointer hover:bg-gray-50">
-                      <input type="checkbox" checked={veganMode} onChange={e => setVeganMode(e.target.checked)} className="w-4 h-4 accent-green-600" />
-                      <div className="flex items-center gap-2">
-                        <Leaf size={15} className="text-green-600" />
-                        <span className="text-sm text-gray-700">Vegan diet</span>
-                      </div>
-                    </label>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setBlock(2)} className="btn-secondary flex-1">← Back</button>
-                      <button type="submit" disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-                        {loading ? <><Loader2 size={15} className="animate-spin" /> Calculating...</> : 'Calculate'}
-                      </button>
-                    </div>
-                  </>
-                )}
+                </div>
               </form>
             </div>
           </div>
         )}
 
-        <div className={clsx('space-y-4', profileCompleted ? 'lg:col-span-5' : 'lg:col-span-3')}>
-          {result ? (
-            <>
-              {result.warnings?.map((w: string, i: number) => (
-                <div key={i} className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
-                  <AlertTriangle size={16} className="text-yellow-600 shrink-0 mt-0.5" />
-                  <p className="text-sm text-yellow-800">{w}</p>
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          {/* კითხვარი — მხოლოდ თუ პროფილი არ არის შევსებული */}
+          {!profileCompleted && (
+            <div className="lg:col-span-2">
+              <div className="card bg-white/80 backdrop-blur border border-white/50 shadow-xl">
+                <div className="flex items-center gap-2 mb-5">
+                  <div className="w-8 h-8 bg-gradient-to-br from-accent-500 to-primary-500 rounded-lg flex items-center justify-center shadow">
+                    <Brain size={16} className="text-white" />
+                  </div>
+                  <h2 className="font-semibold text-gray-900">კითხვარი</h2>
                 </div>
-              ))}
-              <div className="card">
-                <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Activity size={16} className="text-primary-600" /> Metabolic Calculations
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { label: 'BMR', val: result.bmr, unit: 'kcal', desc: 'Base rate' },
-                    { label: 'TDEE', val: result.tdee, unit: 'kcal', desc: 'Total burn' },
-                    { label: 'Target', val: result.adjusted_calories, unit: 'kcal', desc: 'Daily', highlight: true },
-                    { label: 'BMI', val: result.bmi, unit: '', desc: result.bmi_class || 'Normal' },
-                  ].map(({ label, val, unit, desc, highlight }) => (
-                    <div key={label} className={clsx('rounded-xl p-3 text-center', highlight ? 'bg-primary-50 border border-primary-200' : 'bg-gray-50')}>
-                      <div className={clsx('font-bold text-xl', highlight ? 'text-primary-700' : 'text-gray-800')}>{val}{unit}</div>
-                      <div className="text-xs font-medium text-gray-500">{label}</div>
-                      <div className="text-[10px] text-gray-400">{desc}</div>
-                    </div>
+
+                {/* ბლოკების ნავიგაცია */}
+                <div className="flex rounded-xl border border-gray-200 p-1 gap-1 mb-5">
+                  {[{ n:1, label:'ბლოკი I' },{ n:2, label:'ბლოკი II' },{ n:3, label:'მიზანი' }].map(({ n, label }) => (
+                    <button key={n} type="button" onClick={() => setBlock(n)}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${block === n ? 'bg-primary-600 text-white shadow' : 'text-gray-500 hover:text-gray-700'}`}>
+                      {label}
+                    </button>
                   ))}
                 </div>
-              </div>
-              <div className="card">
-                <h3 className="font-semibold text-gray-900 mb-4">Macronutrients (daily)</h3>
-                <div className="space-y-3">
-                  {[
-                    { label: 'Protein', val: result.macros?.protein, color: 'bg-blue-400', unit: 'g' },
-                    { label: 'Carbs', val: result.macros?.carbs, color: 'bg-green-400', unit: 'g' },
-                    { label: 'Fat', val: result.macros?.fat, color: 'bg-yellow-400', unit: 'g' },
-                  ].map(({ label, val, color, unit }) => {
-                    if (!val) return null;
-                    const total = (result.macros?.protein || 0) + (result.macros?.carbs || 0) + (result.macros?.fat || 0);
-                    const pct = total > 0 ? Math.round((val / total) * 100) : 0;
-                    return (
-                      <div key={label}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="font-medium text-gray-700">{label}</span>
-                          <span className="text-gray-500">{val}{unit} <span className="text-gray-400 text-xs">({pct}%)</span></span>
-                        </div>
-                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
+
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                  {block === 1 && (
+                    <>
+                      <div>
+                        <label className="label">სქესი</label>
+                        <div className="flex gap-2">
+                          {[{ v:'male',l:'მამრობითი' },{ v:'female',l:'მდედრობითი' }].map(({ v, l }) => (
+                            <label key={v} className="flex-1 cursor-pointer">
+                              <input type="radio" value={v} {...register('gender')} className="peer sr-only" />
+                              <div className="text-center py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium transition-all peer-checked:border-primary-400 peer-checked:bg-primary-50 peer-checked:text-primary-700 text-gray-600">{l}</div>
+                            </label>
+                          ))}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        {[{ name:'age',label:'ასაკი',placeholder:'30' },{ name:'height_cm',label:'სიმაღლე (სმ)',placeholder:'175' },{ name:'weight_kg',label:'წონა (კგ)',placeholder:'75' }].map(({ name, label, placeholder }) => (
+                          <div key={name}>
+                            <label className="label text-xs">{label}</label>
+                            <input type="number" className="input text-sm py-2" placeholder={placeholder} {...register(name)} />
+                          </div>
+                        ))}
+                      </div>
+                      <div>
+                        <label className="label">დღიური აქტივობა</label>
+                        <div className="space-y-2">
+                          {Object.entries(ACTIVITY_LABELS).map(([v, l]) => (
+                            <label key={v} className="cursor-pointer">
+                              <input type="radio" value={v} {...register('activity_level')} className="peer sr-only" />
+                              <div className="flex items-start gap-2 p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200 text-gray-700">{l}</div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => setBlock(2)} className="btn-primary w-full">შემდეგი →</button>
+                    </>
+                  )}
+                  {block === 2 && (
+                    <>
+                      <div>
+                        <label className="label">კვების ფანჯარა</label>
+                        <div className="space-y-2">
+                          {Object.entries(EATING_WINDOW_LABELS).map(([v, l]) => (
+                            <label key={v} className="cursor-pointer">
+                              <input type="radio" value={v} {...register('eating_window')} className="peer sr-only" />
+                              <div className="p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200 text-gray-700">{l}</div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label">ნახშირწყლების მგრძნობელობა</label>
+                        <div className="space-y-2">
+                          {Object.entries(CARB_LABELS).map(([v, l]) => (
+                            <label key={v} className="cursor-pointer">
+                              <input type="radio" value={v} {...register('carb_sensitivity')} className="peer sr-only" />
+                              <div className="p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200 text-gray-700">{l}</div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label">შიმშილის პიკი</label>
+                        <div className="space-y-2">
+                          {Object.entries(HUNGER_LABELS).map(([v, l]) => (
+                            <label key={v} className="cursor-pointer">
+                              <input type="radio" value={v} {...register('hunger_peak')} className="peer sr-only" />
+                              <div className="p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200 text-gray-700">{l}</div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setBlock(1)} className="btn-secondary flex-1">← უკან</button>
+                        <button type="button" onClick={() => setBlock(3)} className="btn-primary flex-1">შემდეგი →</button>
+                      </div>
+                    </>
+                  )}
+                  {block === 3 && (
+                    <>
+                      <div>
+                        <label className="label">მიზანი</label>
+                        <div className="space-y-2">
+                          {Object.entries(GOAL_CONFIG).map(([v, { label, icon: Icon, color, info }]) => (
+                            <label key={v} className="cursor-pointer">
+                              <input type="radio" value={v} {...register('goal')} className="peer sr-only" />
+                              <div className={clsx('flex items-start gap-3 p-3 rounded-xl border transition-all peer-checked:ring-2 peer-checked:ring-primary-400', goal === v ? color : 'border-gray-100 hover:border-gray-200')}>
+                                <Icon size={16} className="mt-0.5 shrink-0" />
+                                <div>
+                                  <div className="text-sm font-medium">{label}</div>
+                                  <div className="text-xs text-gray-500 mt-0.5">{info}</div>
+                                </div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      {(goal === 'lose' || goal === 'gain') && (
+                        <div>
+                          <label className="label">სამიზნე წონა (კგ) — სურვილისამებრ</label>
+                          <input type="number" className="input text-sm" placeholder="მაგ. 70" {...register('target_weight_kg')} />
+                        </div>
+                      )}
+                      <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 cursor-pointer hover:bg-gray-50">
+                        <input type="checkbox" checked={veganMode} onChange={e => setVeganMode(e.target.checked)} className="w-4 h-4 accent-green-600" />
+                        <div className="flex items-center gap-2">
+                          <Leaf size={15} className="text-green-600" />
+                          <span className="text-sm text-gray-700">ვეგანური დიეტა</span>
+                        </div>
+                      </label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setBlock(2)} className="btn-secondary flex-1">← უკან</button>
+                        <button type="submit" disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
+                          {loading ? <><Loader2 size={15} className="animate-spin" /> გამოთვლა...</> : 'გამოთვლა'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </form>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="card text-center">
-                  <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2">
-                    <Droplets size={20} className="text-blue-500" />
+            </div>
+          )}
+
+          {/* შედეგები */}
+          <div className={clsx('space-y-4', profileCompleted ? 'lg:col-span-5' : 'lg:col-span-3')}>
+            {result ? (
+              <>
+                {result.warnings?.map((w: string, i: number) => (
+                  <div key={i} className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
+                    <AlertTriangle size={16} className="text-yellow-600 shrink-0 mt-0.5" />
+                    <p className="text-sm text-yellow-800">{w}</p>
                   </div>
-                  <div className="font-bold text-xl text-blue-600">{result.water_ml} ml</div>
-                  <div className="text-xs text-gray-400 mt-0.5">Water per day</div>
-                </div>
-                {result.timeline && (
-                  <div className="card text-center">
-                    <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center mx-auto mb-2">
-                      <Calendar size={20} className="text-primary-500" />
-                    </div>
-                    <div className="font-bold text-lg text-primary-600">{result.timeline}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">Target time</div>
-                    {result.weekly_rate && <div className="text-xs text-gray-500">{result.weekly_rate}</div>}
-                  </div>
-                )}
-              </div>
-              {result.meal_plan && (
-                <div className="card">
+                ))}
+
+                {/* მეტაბოლური გათვლები */}
+                <div className="card bg-white/80 backdrop-blur border border-white/50 shadow-lg">
                   <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                    <Utensils size={16} className="text-primary-600" /> Meal Plan ({result.meals_per_day} meals/day)
+                    <Activity size={16} className="text-primary-600" /> მეტაბოლური გათვლები
                   </h3>
-                  <div className="space-y-2">
-                    {result.meal_plan.map((meal: any, i: number) => (
-                      <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                        <div className="w-16 text-xs text-gray-400 font-medium">{meal.time}</div>
-                        <div className="flex-1">
-                          <span className="font-medium text-sm text-gray-800">{meal.name}</span>
-                          <div className="text-xs text-gray-400">{meal.ratio}% of calories</div>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <span className="font-semibold text-gray-700">{meal.calories} kcal</span>
-                          <span>P:{meal.protein}g</span>
-                          <span>F:{meal.fat}g</span>
-                          <span>C:{meal.carbs}g</span>
-                        </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: 'BMR', val: result.bmr, unit: 'კკალ', desc: 'საბაზო მაჩვენებელი' },
+                      { label: 'TDEE', val: result.tdee, unit: 'კკალ', desc: 'სულ იწვება' },
+                      { label: 'სამიზნე', val: result.adjusted_calories, unit: 'კკალ', desc: 'დღიური', highlight: true },
+                      { label: 'BMI', val: result.bmi, unit: '', desc: result.bmi_class || 'ნორმა' },
+                    ].map(({ label, val, unit, desc, highlight }) => (
+                      <div key={label} className={clsx('rounded-xl p-3 text-center', highlight ? 'bg-primary-50 border-2 border-primary-200' : 'bg-gray-50')}>
+                        <div className={clsx('font-bold text-xl', highlight ? 'text-primary-700' : 'text-gray-800')}>{val}{unit}</div>
+                        <div className="text-xs font-medium text-gray-500">{label}</div>
+                        <div className="text-[10px] text-gray-400">{desc}</div>
                       </div>
                     ))}
                   </div>
                 </div>
-              )}
-              <div className="card border-2 border-primary-100 bg-primary-50/30">
-                <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                  <ShoppingCart size={16} className="text-primary-600" /> Generate Basket
-                </h3>
-                <p className="text-xs text-gray-500 mb-3">
-                  System will build a {result.adjusted_calories} kcal basket based on your profile
-                </p>
-                <div className="flex gap-2 mb-3">
-                  <button onClick={() => setVeganMode(!veganMode)}
-                    className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all', veganMode ? 'bg-green-500 text-white border-green-500' : 'bg-white text-green-700 border-green-300')}>
-                    <Leaf size={12} /> Vegan
-                  </button>
-                  <button onClick={() => setShowFilter(!showFilter)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border bg-white text-gray-600 border-gray-200 hover:bg-gray-50">
-                    <Filter size={12} /> Filter {excludedCats.length > 0 && `(-${excludedCats.length})`}
-                  </button>
+
+                {/* მაკრო ელემენტები */}
+                <div className="card bg-white/80 backdrop-blur border border-white/50 shadow-lg">
+                  <h3 className="font-semibold text-gray-900 mb-4">მაკრო ელემენტები (დღიური)</h3>
+                  <div className="space-y-3">
+                    {[
+                      { label: 'ცილა', val: result.macros?.protein, color: 'bg-blue-400', unit: 'გ' },
+                      { label: 'ნახშირწყლები', val: result.macros?.carbs, color: 'bg-green-400', unit: 'გ' },
+                      { label: 'ცხიმი', val: result.macros?.fat, color: 'bg-yellow-400', unit: 'გ' },
+                    ].map(({ label, val, color, unit }) => {
+                      if (!val) return null;
+                      const total = (result.macros?.protein||0)+(result.macros?.carbs||0)+(result.macros?.fat||0);
+                      const pct = total > 0 ? Math.round((val/total)*100) : 0;
+                      return (
+                        <div key={label}>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="font-medium text-gray-700">{label}</span>
+                            <span className="text-gray-500">{val}{unit} <span className="text-gray-400 text-xs">({pct}%)</span></span>
+                          </div>
+                          <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className={`h-full ${color} rounded-full transition-all`} style={{ width:`${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                {showFilter && (
-                  <div className="mb-3">
-                    <CategoryFilter categories={categories} excluded={excludedCats} onChange={setExcludedCats} />
+
+                {/* წყალი და ვადა */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="card bg-white/80 backdrop-blur border border-white/50 shadow-lg text-center">
+                    <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2">
+                      <Droplets size={20} className="text-blue-500" />
+                    </div>
+                    <div className="font-bold text-xl text-blue-600">{result.water_ml} მლ</div>
+                    <div className="text-xs text-gray-400 mt-0.5">წყალი დღეში</div>
+                  </div>
+                  {result.timeline && (
+                    <div className="card bg-white/80 backdrop-blur border border-white/50 shadow-lg text-center">
+                      <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center mx-auto mb-2">
+                        <Calendar size={20} className="text-primary-500" />
+                      </div>
+                      <div className="font-bold text-lg text-primary-600">{result.timeline}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">სამიზნე ვადა</div>
+                      {result.weekly_rate && <div className="text-xs text-gray-500">{result.weekly_rate}</div>}
+                    </div>
+                  )}
+                </div>
+
+                {/* კვების გეგმა */}
+                {result.meal_plan && (
+                  <div className="card bg-white/80 backdrop-blur border border-white/50 shadow-lg">
+                    <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                      <Utensils size={16} className="text-primary-600" /> კვების გეგმა ({result.meals_per_day} კვება/დღე)
+                    </h3>
+                    <div className="space-y-2">
+                      {result.meal_plan.map((meal: any, i: number) => (
+                        <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition">
+                          <div className="w-16 text-xs text-gray-400 font-medium">{meal.time}</div>
+                          <div className="flex-1">
+                            <span className="font-medium text-sm text-gray-800">{meal.name}</span>
+                            <div className="text-xs text-gray-400">{meal.ratio}% კალორიებიდან</div>
+                          </div>
+                          <div className="flex items-center gap-2 text-xs text-gray-500">
+                            <span className="font-semibold text-gray-700">{meal.calories} კკალ</span>
+                            <span>ც:{meal.protein}გ</span>
+                            <span>ცხ:{meal.fat}გ</span>
+                            <span>ნ:{meal.carbs}გ</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
-                <button onClick={handleGenerateBasket} disabled={basketLoading}
-                  className="btn-primary w-full flex items-center justify-center gap-2">
-                  {basketLoading ? <><Loader2 size={15} className="animate-spin" /> Generating...</> : <><ShoppingCart size={15} /> Generate Basket ({result.adjusted_calories} kcal)</>}
-                </button>
-              </div>
-              {basket.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <ShoppingCart size={16} className="text-primary-600" /> Food Basket
-                      <span className="tag bg-primary-50 text-primary-700">{basket.length} items</span>
-                    </h3>
-                    <button onClick={() => setShowRecipe(true)} className="btn-secondary flex items-center gap-2 text-sm">
-                      <ChefHat size={15} /> Recipe
+
+                {/* კალათის გენერაცია */}
+                <div className="card bg-gradient-to-br from-primary-50 to-accent-50 border-2 border-primary-100 shadow-lg">
+                  <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                    <ShoppingCart size={16} className="text-primary-600" /> კალათის გენერაცია
+                  </h3>
+                  <p className="text-xs text-gray-500 mb-3">
+                    სისტემა შექმნის {result.adjusted_calories} კკალ კალათს შენი პროფილის მიხედვით
+                  </p>
+                  <div className="flex gap-2 mb-3">
+                    <button onClick={() => setVeganMode(!veganMode)}
+                      className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all', veganMode ? 'bg-green-500 text-white border-green-500' : 'bg-white text-green-700 border-green-300')}>
+                      <Leaf size={12} /> ვეგანური
+                    </button>
+                    <button onClick={() => setShowFilter(!showFilter)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border bg-white text-gray-600 border-gray-200 hover:bg-gray-50">
+                      <Filter size={12} /> ფილტრი {excludedCats.length > 0 && `(-${excludedCats.length})`}
                     </button>
                   </div>
-                  <BasketResults />
+                  {showFilter && (
+                    <div className="mb-3">
+                      <CategoryFilter categories={categories} excluded={excludedCats} onChange={setExcludedCats} />
+                    </div>
+                  )}
+                  <button onClick={handleGenerateBasket} disabled={basketLoading}
+                    className="btn-primary w-full flex items-center justify-center gap-2">
+                    {basketLoading
+                      ? <><Loader2 size={15} className="animate-spin" /> მუშავდება...</>
+                      : <><ShoppingCart size={15} /> კალათის გენერაცია ({result.adjusted_calories} კკალ)</>}
+                  </button>
                 </div>
-              )}
-              {showRecipe && <RecipeModal basket={basket} totals={totals} onClose={() => setShowRecipe(false)} />}
-            </>
-          ) : (
-            <div className="card flex flex-col items-center justify-center py-24 text-center">
-              <div className="w-16 h-16 bg-accent-50 rounded-2xl flex items-center justify-center mb-4">
-                <Brain size={28} className="text-accent-300" />
+
+                {/* კალათი */}
+                {basket.length > 0 && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                        <ShoppingCart size={16} className="text-primary-600" /> კვების კალათი
+                        <span className="tag bg-primary-50 text-primary-700">{basket.length} პროდუქტი</span>
+                      </h3>
+                      <button onClick={() => setShowRecipe(true)} className="btn-secondary flex items-center gap-2 text-sm">
+                        <ChefHat size={15} /> AI რეცეპტი
+                      </button>
+                    </div>
+                    <BasketResults />
+                  </div>
+                )}
+                {showRecipe && <RecipeModal basket={basket} totals={totals} onClose={() => setShowRecipe(false)} />}
+              </>
+            ) : (
+              <div className="card bg-white/80 backdrop-blur border border-white/50 shadow-lg flex flex-col items-center justify-center py-24 text-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-accent-100 to-primary-100 rounded-2xl flex items-center justify-center mb-4">
+                  <Brain size={28} className="text-accent-400" />
+                </div>
+                <p className="text-gray-400 text-sm">
+                  {savedProfile ? 'პროფილი შენახულია. ტვირთავს შენს გეგმას...' : 'შეავსე 3-ბლოკიანი კითხვარი პერსონალური გეგმის მისაღებად'}
+                </p>
               </div>
-              <p className="text-gray-400 text-sm">
-                {savedProfile ? 'Profile saved. Loading your daily plan...' : 'Fill in the 3-block questionnaire to get your personalized plan'}
-              </p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
