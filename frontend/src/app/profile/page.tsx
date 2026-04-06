@@ -42,6 +42,7 @@ export default function ProfilePage() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [showWeightTip, setShowWeightTip] = useState(false);
+  const [nextCheckinDays, setNextCheckinDays] = useState<number | null>(null);
 
   const { register, handleSubmit, setValue, watch } = useForm<any>();
   const goal = watch('goal');
@@ -67,6 +68,15 @@ export default function ProfilePage() {
         setValue('target_weight_kg', prof.target_weight_kg);
       }
     }).finally(() => setLoading(false));
+
+    // Checkin countdown
+    api.get('/personalization/checkin/needed').then(({ data }) => {
+      if (!data.needed && data.days_until) {
+        setNextCheckinDays(data.days_until);
+      } else if (data.needed) {
+        setNextCheckinDays(0);
+      }
+    }).catch(() => {});
   }, [user]);
 
   const handleNameSave = async () => {
@@ -132,17 +142,17 @@ export default function ProfilePage() {
     let pct = 0;
 
     if (goal_type === 'lose') {
-      if (diff < -0.3) { status = 'great'; message = `კარგი პროგრესი! ${Math.abs(diff).toFixed(1)} კგ დაიკლო`; }
+      if (diff < -0.3) { status = 'great'; message = `🔥 შესანიშნავი! ${Math.abs(diff).toFixed(1)} კგ დაიკლე — ასე გააგრძელე!`; }
       else if (diff > 0.3) { status = 'warn'; message = 'წონა იმატებს — შეამოწმე კვების გეგმა'; }
       else { status = 'ok'; message = 'წონა სტაბილურია — გაჩქარდი ოდნავ'; }
       if (target) pct = Math.min(100, Math.round((Math.abs(diff) / Math.abs(first - target)) * 100));
     } else if (goal_type === 'gain') {
-      if (diff > 0.3) { status = 'great'; message = `კარგი! ${diff.toFixed(1)} კგ მოიმატე`; }
+      if (diff > 0.3) { status = 'great'; message = `💪 ბრავო! ${diff.toFixed(1)} კგ მოიმატე — სწორ გზაზე ხარ!`; }
       else if (diff < -0.3) { status = 'warn'; message = 'წონა იკლებს — გაზარდე კალორიები'; }
       else { status = 'ok'; message = 'წონა სტაბილურია — კარგადაა'; }
       if (target) pct = Math.min(100, Math.round((diff / Math.abs(target - first)) * 100));
     } else {
-      if (Math.abs(diff) < 1) { status = 'great'; message = 'შესანიშნავი! წონა სტაბილურია'; }
+      if (Math.abs(diff) < 1) { status = 'great'; message = '✅ შესანიშნავი! წონა სტაბილურია — მიზანი მიღწეულია!'; }
       else { status = 'ok'; message = `მცირე ცვლილება: ${diff > 0 ? '+' : ''}${diff.toFixed(1)} კგ`; }
       pct = 100 - Math.min(100, Math.abs(diff) * 20);
     }
@@ -203,6 +213,31 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
+
+      {/* Checkin countdown */}
+      {nextCheckinDays !== null && (
+        <div className={clsx(
+          'flex items-center gap-3 p-3 rounded-xl border text-sm',
+          nextCheckinDays === 0
+            ? 'bg-primary-50 border-primary-200 text-primary-700'
+            : 'bg-gray-50 border-gray-200 text-gray-600'
+        )}>
+          <Scale size={16} className={nextCheckinDays === 0 ? 'text-primary-600' : 'text-gray-400'} />
+          {nextCheckinDays === 0 ? (
+            <div>
+              <span className="font-semibold">დროა ყოველკვირეული შემოწმებისთვის!</span>
+              <Link href="/personalization" className="ml-2 text-xs text-primary-600 hover:underline">
+                შემოწმება →
+              </Link>
+            </div>
+          ) : (
+            <div>
+              <span>შემდეგი შემოწმება: </span>
+              <span className="font-semibold">{nextCheckinDays} დღეში</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary-400" size={28} /></div>
@@ -550,9 +585,12 @@ export default function ProfilePage() {
 
           {/* ── კვების ისტორია ── */}
           <div className="card shadow-lg">
-            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Clock size={16} className="text-primary-600" /> კვების გათვლების ისტორია
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Clock size={16} className="text-primary-600" /> კვების ისტორია
+              </h2>
+              <span className="text-xs text-gray-400">{history.length} ჩანაწერი</span>
+            </div>
             {history.length === 0 ? (
               <div className="text-center py-8 text-gray-400 text-sm">
                 <p>ჯერ გათვლები არ გაქვთ.</p>
