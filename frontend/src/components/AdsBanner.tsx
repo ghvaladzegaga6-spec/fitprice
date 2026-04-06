@@ -25,9 +25,10 @@ export function AdsBanner() {
   const ad = ads[current];
 
   return (
-    <div className="w-full mb-4">
-      <div className="relative rounded-2xl overflow-hidden shadow-md bg-gray-100" style={{ height: '80px' }}>
-        {/* Image */}
+    <div className="w-full mb-5">
+      <div className="relative rounded-2xl overflow-hidden shadow-lg bg-gray-100"
+        style={{ height: '120px' }}>
+
         {ad.link_url ? (
           <Link href={ad.link_url} target="_blank" rel="noopener noreferrer" className="block w-full h-full">
             <img src={ad.image_url} alt={ad.title || 'რეკლამა'}
@@ -38,21 +39,19 @@ export function AdsBanner() {
             className="w-full h-full object-cover" />
         )}
 
-        {/* Label */}
-        <div className="absolute top-1.5 left-2">
-          <span className="bg-black/40 backdrop-blur-sm text-white text-[9px] px-1.5 py-0.5 rounded-full font-medium">
+        <div className="absolute top-2 left-2">
+          <span className="bg-black/40 backdrop-blur-sm text-white text-[9px] px-2 py-0.5 rounded-full font-medium tracking-wide">
             რეკლამა
           </span>
         </div>
 
-        {/* Dots */}
         {ads.length > 1 && (
-          <div className="absolute bottom-1.5 right-2 flex items-center gap-1">
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5">
             {ads.map((_, i) => (
               <button key={i} onClick={() => setCurrent(i)}
                 className={clsx(
-                  'rounded-full transition-all',
-                  i === current ? 'bg-white w-3 h-1.5' : 'bg-white/50 w-1.5 h-1.5'
+                  'rounded-full transition-all duration-300',
+                  i === current ? 'bg-white w-4 h-2' : 'bg-white/50 w-2 h-2 hover:bg-white/80'
                 )} />
             ))}
           </div>
