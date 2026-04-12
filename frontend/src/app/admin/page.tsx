@@ -17,7 +17,7 @@ export default function AdminPage() {
   const isSuperAdmin = user?.role === 'super_admin';
   const isGymAdmin   = user?.role === 'gym_admin';
 
-  const [tab, setTab] = useState<'users' | 'gyms' | 'nfc' | 'banners' | 'password'>('users');
+  const [tab, setTab] = useState<'users' | 'gyms' | 'fitpass' | 'nfc' | 'banners' | 'password'>('users');
   const [users, setUsers]     = useState<any[]>([]);
   const [gyms,  setGyms]      = useState<any[]>([]);
   const [ads,   setAds]       = useState<any[]>([]);
