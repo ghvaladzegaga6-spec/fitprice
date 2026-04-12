@@ -14,6 +14,7 @@ import { adsRouter } from './ads/ads.router';
 import { usersRouter } from './users/users.router';
 import { personalizationRouter } from './personalization/personalization.router';
 import { adminRouter } from './admin/admin.router';
+import { fitpassRouter } from './fitpass/fitpass.router';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import dotenv from 'dotenv';
@@ -85,6 +86,7 @@ app.use('/api/ads',             adsRouter);
 app.use('/api/users',           usersRouter);
 app.use('/api/personalization', personalizationRouter);
 app.use('/api/admin',           adminRouter);
+app.use('/api/fitpass',         fitpassRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
