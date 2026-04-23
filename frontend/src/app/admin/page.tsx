@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   Users, Building2, Plus, Trash2, PauseCircle, PlayCircle, Loader2,
   X, Eye, EyeOff, Pencil, Check, Shield, Key,
-  ToggleLeft, ToggleRight, Lock, Image, Upload, ExternalLink, Nfc, Filter, Users2, RefreshCw
+  ToggleLeft, ToggleRight, Lock, Image, Upload, ExternalLink, Nfc, Filter
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
@@ -17,16 +17,11 @@ export default function AdminPage() {
   const isSuperAdmin = user?.role === 'super_admin';
   const isGymAdmin   = user?.role === 'gym_admin';
 
-  const [tab, setTab] = useState<'users' | 'gyms' | 'fitpass' | 'nfc' | 'banners' | 'password'>('users');
+  const [tab, setTab] = useState<'users' | 'gyms' | 'nfc' | 'banners' | 'password'>('users');
   const [users, setUsers]     = useState<any[]>([]);
   const [gyms,  setGyms]      = useState<any[]>([]);
   const [ads,   setAds]       = useState<any[]>([]);
   const [nfcUsers, setNfcUsers] = useState<any[]>([]);
-  const [fitpassMembers, setFitpassMembers] = useState<any[]>([]);
-  const [fitpassStats, setFitpassStats] = useState<any>(null);
-  const [showAddFitpass, setShowAddFitpass] = useState(false);
-  const [fitpassForm, setFitpassForm] = useState({ name:'', phone:'', personal_id:'', gym_id:'' });
-  const [fitpassGymFilter, setFitpassGymFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [gymFilter, setGymFilter] = useState('');
   const [nfcGymFilter, setNfcGymFilter] = useState('');
@@ -63,20 +58,11 @@ export default function AdminPage() {
         promises.push(api.get('/ads/admin/all'));
         promises.push(api.get('/admin/users/nfc'));
       }
-      promises.push(api.get('/fitpass'));
       const results = await Promise.all(promises);
       setUsers(results[0].data.users);
       setGyms(results[1].data.gyms);
-      if (isSuperAdmin) {
-        if (results[2]) setAds(results[2].data.ads || []);
-        if (results[3]) setNfcUsers(results[3].data.users || []);
-        if (results[4]) setFitpassMembers(results[4].data.members || []);
-        const stats = await api.get('/fitpass/stats').catch(() => ({ data: { stats: null } }));
-        setFitpassStats(stats.data.stats);
-      } else {
-        const lastResult = results[results.length - 1];
-        if (lastResult) setFitpassMembers(lastResult.data.members || []);
-      }
+      if (results[2]) setAds(results[2].data.ads || []);
+      if (results[3]) setNfcUsers(results[3].data.users || []);
     } catch { toast.error('მონაცემების ჩატვირთვა ვერ მოხდა'); }
     finally { setLoading(false); }
   };
@@ -237,7 +223,6 @@ export default function AdminPage() {
   const tabs = [
     { key:'users',   label:`მომხმარებლები (${users.length})`, icon: Users },
     { key:'gyms',    label:`დარბაზები (${gyms.length})`,      icon: Building2 },
-    { key:'fitpass', label:`Fitpass (${fitpassMembers.length})`, icon: Users2 },
     ...(isSuperAdmin ? [
       { key:'nfc',     label:`NFC პროდუქტი (${nfcUsers.length})`, icon: Nfc },
       { key:'banners', label:`ბანერები (${ads.length})`,           icon: Image },
@@ -574,184 +559,6 @@ export default function AdminPage() {
                     </div>
                   ))}
                   {gyms.length === 0 && <div className="text-center py-12 text-gray-400 text-sm">დარბაზები არ არის</div>}
-                </div>
-              </div>
-            )}
-
-            {/* ── FITPASS ── */}
-            {tab === 'fitpass' && (
-              <div className="space-y-4">
-
-                {/* სტატისტიკა */}
-                {isSuperAdmin && fitpassStats && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                      { label: 'აქტიური', val: fitpassStats.active_count, color: 'text-green-600', bg: 'bg-green-50' },
-                      { label: 'არააქტიური', val: fitpassStats.inactive_count, color: 'text-red-500', bg: 'bg-red-50' },
-                      { label: 'სულ', val: fitpassStats.total_count, color: 'text-blue-600', bg: 'bg-blue-50' },
-                      { label: 'განახლებები', val: fitpassStats.total_renewals, color: 'text-purple-600', bg: 'bg-purple-50' },
-                    ].map(({ label, val, color, bg }) => (
-                      <div key={label} className={clsx('card text-center', bg)}>
-                        <div className={clsx('text-2xl font-bold', color)}>{val || 0}</div>
-                        <div className="text-xs text-gray-500 mt-0.5">{label}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-3 flex-wrap">
-                  {isSuperAdmin && (
-                    <select className="input w-48 text-sm" value={fitpassGymFilter}
-                      onChange={e => setFitpassGymFilter(e.target.value)}>
-                      <option value="">ყველა დარბაზი</option>
-                      {gyms.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </select>
-                  )}
-                  <button onClick={() => setShowAddFitpass(true)}
-                    className="flex items-center gap-2 btn-primary text-sm ml-auto">
-                    <Plus size={15}/> Fitpass მომხმარებლის დამატება
-                  </button>
-                </div>
-
-                {showAddFitpass && (
-                  <div className="card border-2 border-primary-200 bg-primary-50/30">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold flex items-center gap-2">
-                        <Users2 size={16} className="text-primary-600"/> ახალი Fitpass მომხმარებელი
-                      </h3>
-                      <button onClick={() => setShowAddFitpass(false)}><X size={18} className="text-gray-400"/></button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="col-span-2">
-                        <label className="label">სახელი გვარი *</label>
-                        <input className="input" placeholder="გიორგი გელაშვილი" value={fitpassForm.name}
-                          onChange={e => setFitpassForm({...fitpassForm, name: e.target.value})} />
-                      </div>
-                      <div>
-                        <label className="label">ტელეფონი</label>
-                        <input className="input" placeholder="5XX XXX XXX" value={fitpassForm.phone}
-                          onChange={e => setFitpassForm({...fitpassForm, phone: e.target.value})} />
-                      </div>
-                      <div>
-                        <label className="label">პირადი ნომერი</label>
-                        <input className="input" placeholder="01234567890" value={fitpassForm.personal_id}
-                          onChange={e => setFitpassForm({...fitpassForm, personal_id: e.target.value})} />
-                      </div>
-                      {isSuperAdmin && (
-                        <div className="col-span-2">
-                          <label className="label">დარბაზი *</label>
-                          <select className="input" value={fitpassForm.gym_id}
-                            onChange={e => setFitpassForm({...fitpassForm, gym_id: e.target.value})}>
-                            <option value="">აირჩიეთ</option>
-                            {gyms.filter(g => g.is_active).map(g => (
-                              <option key={g.id} value={g.id}>{g.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-3 p-3 bg-blue-50 rounded-xl text-xs text-blue-700">
-                      ⏱️ რეგისტრაციის მომენტიდან 30-დღიანი პერიოდი დაიწყება ავტომატურად.
-                    </div>
-                    <button onClick={async () => {
-                      if (!fitpassForm.name) { toast.error('სახელი სავალდებულოა'); return; }
-                      try {
-                        const payload: any = { name: fitpassForm.name, phone: fitpassForm.phone, personal_id: fitpassForm.personal_id };
-                        if (isSuperAdmin && fitpassForm.gym_id) payload.gym_id = Number(fitpassForm.gym_id);
-                        await api.post('/fitpass', payload);
-                        toast.success('Fitpass მომხმარებელი დაემატა! ✅');
-                        setFitpassForm({ name:'', phone:'', personal_id:'', gym_id:'' });
-                        setShowAddFitpass(false);
-                        const fp = await api.get('/fitpass');
-                        setFitpassMembers(fp.data.members || []);
-                      } catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
-                    }} className="btn-primary mt-4 flex items-center gap-2">
-                      <Plus size={15}/> დარეგისტრირება
-                    </button>
-                  </div>
-                )}
-
-                <div className="card p-0 overflow-hidden">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b border-gray-100">
-                      <tr>
-                        {['მომხმარებელი','დარბაზი','სტატუსი','დარჩ. დღეები','განახლება','მოქმედება'].map(h => (
-                          <th key={h} className={clsx('px-4 py-3 text-xs font-medium text-gray-500',
-                            h === 'მოქმედება' ? 'text-right' : 'text-left')}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {(fitpassGymFilter
-                        ? fitpassMembers.filter(m => String(m.gym_id) === fitpassGymFilter)
-                        : fitpassMembers
-                      ).map(m => {
-                        const days = Math.ceil(Number(m.days_remaining));
-                        const isExpiring = days <= 5 && days > 0 && m.is_active;
-                        const isExpired = days <= 0 || !m.is_active;
-                        return (
-                          <tr key={m.id} className={clsx('hover:bg-gray-50 transition', isExpired && 'opacity-60')}>
-                            <td className="px-4 py-3">
-                              <div className="font-medium text-sm text-gray-900">{m.name}</div>
-                              {m.phone && <div className="text-xs text-gray-400">📞 {m.phone}</div>}
-                              {m.personal_id && <div className="text-xs text-gray-400">🪪 {m.personal_id}</div>}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-600">{m.gym_name || '—'}</td>
-                            <td className="px-4 py-3">
-                              {m.is_active && days > 0
-                                ? <span className="tag bg-green-50 text-green-600">✅ აქტიური</span>
-                                : <span className="tag bg-red-50 text-red-500">❌ გაუქმებული</span>}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className={clsx('text-sm font-medium',
-                                isExpiring ? 'text-orange-600' : isExpired ? 'text-red-500' : 'text-gray-700')}>
-                                {isExpired ? 'ვადა გასული' : `${days} დღე`}
-                              </div>
-                              <div className="text-xs text-gray-400">
-                                {new Date(m.service_end).toLocaleDateString('ka-GE')}
-                              </div>
-                              {isExpiring && <div className="text-xs text-orange-500 font-medium">⚠️ იწურება!</div>}
-                            </td>
-                            <td className="px-4 py-3 text-sm text-gray-600 text-center font-medium">
-                              {m.renewal_count || 0}x
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button onClick={async () => {
-                                  try {
-                                    await api.post(`/fitpass/${m.id}/renew`);
-                                    toast.success('✅ სერვისი გაგრძელდა 30 დღით!');
-                                    const fp = await api.get('/fitpass');
-                                    setFitpassMembers(fp.data.members || []);
-                                  } catch (err: any) { toast.error(err.response?.data?.error || 'შეცდომა'); }
-                                }}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 transition">
-                                  <RefreshCw size={12}/> გაგრძელება
-                                </button>
-                                {isSuperAdmin && m.is_active && (
-                                  <button onClick={async () => {
-                                    if (!confirm('სერვისის გაუქმება?')) return;
-                                    try {
-                                      await api.patch(`/fitpass/${m.id}/deactivate`);
-                                      toast.success('სერვისი გაუქმდა');
-                                      const fp = await api.get('/fitpass');
-                                      setFitpassMembers(fp.data.members || []);
-                                    } catch { toast.error('შეცდომა'); }
-                                  }}
-                                    className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition">
-                                    <Trash2 size={14}/>
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {fitpassMembers.length === 0 && (
-                    <div className="text-center py-12 text-gray-400 text-sm">Fitpass მომხმარებლები არ არიან</div>
-                  )}
                 </div>
               </div>
             )}

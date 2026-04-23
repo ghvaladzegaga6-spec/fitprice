@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ShoppingCart, User, Brain, LogOut, LogIn, Shield, ArrowLeft, RefreshCw } from 'lucide-react';
+import { ShoppingCart, User, Brain, LogOut, LogIn, Shield, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { clsx } from 'clsx';
 import toast from 'react-hot-toast';
@@ -22,15 +22,15 @@ export function Navbar() {
   const navItems = [
     { href: '/basket', label: 'კალათი', icon: ShoppingCart },
     { href: '/personalization', label: 'პერსონალიზაცია', icon: Brain },
-    { href: '/checkin', label: 'Check-in', icon: RefreshCw },
   ];
 
   return (
     <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-100 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
+          {/* Logo / Back button */}
           <div className="flex items-center gap-3">
-            {isSubPage && (
+            {isSubPage ? (
               <button onClick={() => router.back()}
                 className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition group">
                 <div className="w-8 h-8 bg-gray-100 group-hover:bg-primary-50 rounded-lg flex items-center justify-center transition">
@@ -38,9 +38,9 @@ export function Navbar() {
                 </div>
                 <span className="text-sm font-medium hidden sm:inline">უკან</span>
               </button>
-            )}
+            ) : null}
             <Link href="/basket" className="flex items-center gap-2 group">
-              <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-accent-500 rounded-lg flex items-center justify-center shadow-sm">
+              <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-accent-500 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
                 <span className="text-white font-bold text-sm">F</span>
               </div>
               <span className="font-display text-xl font-bold text-gray-900 tracking-tight">
@@ -49,6 +49,7 @@ export function Navbar() {
             </Link>
           </div>
 
+          {/* Nav Links */}
           <div className="flex items-center gap-1">
             {navItems.map(({ href, label, icon: Icon }) => (
               <Link key={href} href={href}
@@ -78,6 +79,7 @@ export function Navbar() {
             )}
           </div>
 
+          {/* Auth */}
           <div className="flex items-center gap-2">
             {user ? (
               <div className="flex items-center gap-2">
