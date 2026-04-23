@@ -14,6 +14,7 @@ import { adsRouter } from './ads/ads.router';
 import { usersRouter } from './users/users.router';
 import { personalizationRouter } from './personalization/personalization.router';
 import { adminRouter } from './admin/admin.router';
+import { checkinRouter } from './checkin/checkin.router';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import dotenv from 'dotenv';
@@ -54,7 +55,6 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-
 app.options('*', cors());
 
 const globalLimiter = rateLimit({
@@ -71,13 +71,11 @@ const authLimiter = rateLimit({
 });
 
 app.use(globalLimiter);
-
 app.use('/api/ads/upload', express.json({ limit: '20mb' }));
 app.use('/api/ads/upload', express.urlencoded({ extended: true, limit: '20mb' }));
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-// Routes
 app.use('/api/auth',            authLimiter, authRouter);
 app.use('/api/basket',          basketRouter);
 app.use('/api/nutrition',       nutritionRouter);
@@ -85,6 +83,7 @@ app.use('/api/ads',             adsRouter);
 app.use('/api/users',           usersRouter);
 app.use('/api/personalization', personalizationRouter);
 app.use('/api/admin',           adminRouter);
+app.use('/api/checkin',         checkinRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
