@@ -37,6 +37,9 @@ api.interceptors.response.use(
 );
 
 export const basketApi = {
+  generate: (data: any) =>
+    api.post('/basket/optimize', data),
+
   optimize: (data: any) =>
     api.post('/basket/optimize', data),
 

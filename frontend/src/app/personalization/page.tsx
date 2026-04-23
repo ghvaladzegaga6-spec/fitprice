@@ -1,641 +1,523 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import { Brain, Loader2, Droplets, Utensils, Calendar, AlertTriangle,
-         TrendingDown, TrendingUp, Minus, Activity, ShoppingCart,
-         ChefHat, Filter, Leaf, CheckCircle, Scale, Building2, LogIn, Lock } from 'lucide-react';
+import { useAuthStore } from '@/store/auth.store';
 import { api, basketApi } from '@/lib/api';
 import { useBasketStore } from '@/store/basket.store';
-import { useAuthStore } from '@/store/auth.store';
 import { BasketResults } from '@/components/basket/BasketResults';
 import { CategoryFilter } from '@/components/basket/CategoryFilter';
 import { RecipeModal } from '@/components/basket/RecipeModal';
+import {
+  Brain, Loader2, Scale, Flame, Dumbbell, Moon, Footprints,
+  Brain as BrainIcon, Droplets, ChevronRight, ShoppingCart,
+  TrendingDown, TrendingUp, Minus, AlertTriangle, CheckCircle,
+  Info, RefreshCw, Filter, Leaf, ChefHat
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { clsx } from 'clsx';
 import Link from 'next/link';
 
-const ACTIVITY_LABELS: Record<string, string> = {
-  low: 'Low — office, almost no movement',
-  medium: 'Medium — 7-10k steps or 2-3 workouts/week',
-  high: 'High — physical work or daily training',
-};
-const EATING_WINDOW_LABELS: Record<string, string> = {
-  short: 'Short (under 8h) — e.g. 12:00-20:00',
-  standard: 'Standard (8-12h) — e.g. 09:00-21:00',
-  long: 'Long (12h+) — e.g. 07:00-23:00',
-};
-const CARB_LABELS: Record<string, string> = {
-  high: 'Energized, feel great after carbs',
-  low: 'Tired or hungry again soon after',
-  neutral: 'No noticeable reaction',
-};
-const HUNGER_LABELS: Record<string, string> = {
-  morning: 'Morning, right after waking up',
-  evening: 'Evening, after work',
-  even: 'Evenly throughout the day',
-};
-const GOAL_CONFIG = {
-  lose: { label: 'Weight Loss', icon: TrendingDown, color: 'text-blue-600 bg-blue-50 border-blue-200', info: '0.5-1% body weight per week' },
-  gain: { label: 'Weight Gain', icon: TrendingUp, color: 'text-green-600 bg-green-50 border-green-200', info: '1-1.5kg per month (half muscle)' },
-  maintain: { label: 'Maintain', icon: Minus, color: 'text-gray-600 bg-gray-50 border-gray-200', info: 'Weight variation of +/-1kg is normal' },
-};
-
 export default function PersonalizationPage() {
   const { user } = useAuthStore();
-  const [result, setResult] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
+  const { basket, totals, setBasket } = useBasketStore();
+
+  // ── state ──────────────────────────────────────────────────────────────────
+  const [step, setStep] = useState<'profile' | 'checkin' | 'result'>('profile');
   const [profileLoading, setProfileLoading] = useState(true);
+  const [checkinLoading, setCheckinLoading] = useState(false);
   const [basketLoading, setBasketLoading] = useState(false);
+  const [savedProfile, setSavedProfile] = useState<any>(null);
+  const [modelResult, setModelResult] = useState<any>(null);
+  const [totalCheckins, setTotalCheckins] = useState(0);
+  const [checkinNeeded, setCheckinNeeded] = useState(false);
+  const [selectedCalories, setSelectedCalories] = useState<number | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [excludedCats, setExcludedCats] = useState<string[]>([]);
+  const [veganMode, setVeganMode] = useState(false);
   const [showFilter, setShowFilter] = useState(false);
   const [showRecipe, setShowRecipe] = useState(false);
-  const [showCheckin, setShowCheckin] = useState(false);
-  const [checkinLoading, setCheckinLoading] = useState(false);
-  const [excludedCats, setExcludedCats] = useState<string[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [veganMode, setVeganMode] = useState(false);
-  const [savedProfile, setSavedProfile] = useState<any>(null);
-  const [checkinNeeded, setCheckinNeeded] = useState(false);
-  const [block, setBlock] = useState(1);
-  const [gyms, setGyms] = useState<any[]>([]);
-  const [isSuspended, setIsSuspended] = useState(false);
 
-  const { basket, totals, setBasket, setLoading: setBaskLoading } = useBasketStore();
-  const { register, handleSubmit, watch, setValue } = useForm<any>({
-    defaultValues: {
-      gender: 'male', activity_level: 'medium', goal: 'maintain',
-      eating_window: 'standard', carb_sensitivity: 'neutral', hunger_peak: 'even',
-    },
-  });
-  const goal = watch('goal');
-  const { register: regC, handleSubmit: handleC } = useForm<any>({
-    defaultValues: { energy_level: 3, hunger_level: 3 },
+  // Profile form
+  const [profileForm, setProfileForm] = useState({
+    gender: 'male', age: '', height_cm: '', weight_kg: '',
+    goal: 'loss', aggressiveness: 'moderate',
   });
 
+  // Checkin form
+  const [checkinForm, setCheckinForm] = useState({
+    weight_kg: '', calories: '', exercise_min: '',
+    sleep_h: '', steps: '', stress: '', hydration_l: '',
+  });
+
+  // ── load ───────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // always load gyms for public display
-    api.get('/admin/gyms/public').then(({ data }) => setGyms(data.gyms)).catch(() => {});
     basketApi.categories().then(({ data }) => setCategories(data.categories)).catch(() => {});
 
     if (!user) { setProfileLoading(false); return; }
 
-    // check if suspended
-    api.get('/auth/me').then(({ data }) => {
-      setIsSuspended(data.user?.is_suspended || false);
-    }).catch(() => {});
+    Promise.all([
+      api.get('/personalization/profile').catch(() => ({ data: { profile: null } })),
+      api.get('/checkin/latest').catch(() => ({ data: { result: null, total_checkins: 0 } })),
+    ]).then(([profRes, checkinRes]) => {
+      const prof = profRes.data.profile;
+      const total = checkinRes.data.total_checkins || 0;
+      const lastResult = checkinRes.data.result;
 
-    api.get('/personalization/profile').then(({ data }) => {
-      if (data.profile) {
-        const p = data.profile;
-        setSavedProfile(p);
-        setValue('gender', p.gender);
-        setValue('age', p.age);
-        setValue('weight_kg', p.weight_kg);
-        setValue('height_cm', p.height_cm);
-        setValue('activity_level', p.activity_level);
-        setValue('goal', p.goal);
-        setValue('target_weight_kg', p.target_weight_kg);
-        setValue('eating_window', p.eating_window);
-        setValue('carb_sensitivity', p.carb_sensitivity);
-        setValue('hunger_peak', p.hunger_peak);
-        setVeganMode(p.vegan_mode);
+      setTotalCheckins(total);
 
-        // if profile exists, auto-load daily plan
-        if (p.quiz_completed) {
-          loadDailyPlan();
+      if (prof) {
+        setSavedProfile(prof);
+        setProfileForm({
+          gender: prof.gender || 'male',
+          age: String(prof.age || ''),
+          height_cm: String(prof.height_cm || ''),
+          weight_kg: String(prof.weight_kg || ''),
+          goal: prof.goal || 'loss',
+          aggressiveness: prof.aggressiveness || 'moderate',
+        });
+
+        // შევამოწმოთ check-in საჭიროა თუ არა (7 დღეში ერთხელ)
+        if (lastResult) {
+          const lastDate = new Date(lastResult.calculated_at);
+          const daysSince = (Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+          if (daysSince >= 7) {
+            setCheckinNeeded(true);
+            setStep('checkin');
+          } else {
+            setModelResult(lastResult);
+            setSelectedCalories(lastResult.reg_rec);
+            setStep('result');
+          }
+        } else {
+          // პირველი check-in
+          setCheckinNeeded(true);
+          setStep('checkin');
         }
+      } else {
+        setStep('profile');
       }
-    }).catch(() => {}).finally(() => setProfileLoading(false));
-
-    api.get('/personalization/checkin/needed').then(({ data }) => {
-      setCheckinNeeded(data.needed);
-    }).catch(() => {});
+    }).finally(() => setProfileLoading(false));
   }, [user]);
 
-  const loadDailyPlan = async () => {
-    try {
-      const { data } = await api.get('/personalization/daily-plan');
-      if (data.plan) {
-        setResult({
-          adjusted_calories: data.plan.total_calories,
-          macros: { protein: data.plan.total_protein, fat: data.plan.total_fat, carbs: data.plan.total_carbs },
-          meal_plan: data.plan.meals,
-          meals_per_day: data.plan.meals?.length || 3,
-          water_ml: Math.round((savedProfile?.weight_kg || 70) * 35),
-        });
-      }
-    } catch {}
-  };
-
-  const onSubmit = async (data: any) => {
-    setLoading(true);
-    try {
-      const payload = {
-        gender: data.gender,
-        age: Number(data.age),
-        weight_kg: Number(data.weight_kg),
-        height_cm: Number(data.height_cm),
-        activity_level: data.activity_level,
-        goal: data.goal,
-        target_weight_kg: data.target_weight_kg ? Number(data.target_weight_kg) : undefined,
-        eating_window: data.eating_window,
-        carb_sensitivity: data.carb_sensitivity,
-        hunger_peak: data.hunger_peak,
-        calorie_multiplier: savedProfile?.calorie_multiplier || 1.0,
-        vegan_mode: veganMode,
-      };
-      const { data: res } = await api.post('/personalization/calculate', payload);
-      setResult(res);
-      setSavedProfile({ ...payload, ...res, quiz_completed: true });
-      toast.success('Calculation complete!');
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || err.response?.data?.error || 'Error');
-    } finally {
-      setLoading(false);
+  // ── save profile ───────────────────────────────────────────────────────────
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!profileForm.age || !profileForm.height_cm || !profileForm.weight_kg) {
+      toast.error('ყველა ველი სავალდებულოა'); return;
     }
-  };
-
-  const handleGenerateBasket = async () => {
-    if (!result) return;
-    setBasketLoading(true);
-    setBaskLoading(true);
     try {
-      const { data } = await basketApi.optimize({
-        mode: 'calories',
-        calories: result.adjusted_calories,
-        calorie_ratio: result.calorie_ratio || { protein: 0.30, fat: 0.30, carbs: 0.40 },
-        excluded_categories: excludedCats,
-        vegan_only: veganMode,
+      await api.post('/personalization/profile', {
+        gender: profileForm.gender,
+        age: parseInt(profileForm.age),
+        height_cm: parseFloat(profileForm.height_cm),
+        weight_kg: parseFloat(profileForm.weight_kg),
+        activity_level: 'medium',
+        goal: profileForm.goal,
+        aggressiveness: profileForm.aggressiveness,
+        target_weight_kg: parseFloat(profileForm.weight_kg),
+        eating_window: 'standard',
+        carb_sensitivity: 'neutral',
+        hunger_peak: 'even',
+        vegan_mode: false,
       });
-      setBasket(data.basket, data.totals, data.targets);
-      toast.success(`Basket ready! Total: ${data.totals.price.toFixed(2)} GEL`);
+      setSavedProfile({ ...profileForm });
+      setCheckinNeeded(true);
+      setStep('checkin');
+      toast.success('პროფილი შენახულია!');
     } catch (err: any) {
-      toast.error(err.response?.data?.detail || 'Basket error');
-    } finally {
-      setBasketLoading(false);
-      setBaskLoading(false);
+      toast.error(err.response?.data?.error || 'შეცდომა');
     }
   };
 
-  const onCheckin = async (data: any) => {
+  // ── checkin ────────────────────────────────────────────────────────────────
+  const handleCheckin = async (e: React.FormEvent) => {
+    e.preventDefault();
     setCheckinLoading(true);
     try {
-      const { data: res } = await api.post('/personalization/checkin', {
-        current_weight_kg: Number(data.current_weight_kg),
-        energy_level: Number(data.energy_level),
-        hunger_level: Number(data.hunger_level),
-      });
-      setShowCheckin(false);
-      setCheckinNeeded(false);
-      if (res.warning) toast.error(res.warning, { duration: 6000 });
-      if (res.energy_note) toast(res.energy_note, { duration: 5000 });
-      toast.success(res.adjustment_reason + ' ✅');
-      if (result) setResult({ ...result, adjusted_calories: res.new_calories });
-    } catch {
-      toast.error('Check-in error');
+      const sex = (savedProfile?.gender || profileForm.gender) === 'male' ? 1 : 0;
+      const age = parseInt(savedProfile?.age || profileForm.age);
+      const height_cm = parseFloat(savedProfile?.height_cm || profileForm.height_cm);
+
+      const payload = {
+        weight_kg:      parseFloat(checkinForm.weight_kg),
+        calories:       parseInt(checkinForm.calories),
+        exercise_min:   parseInt(checkinForm.exercise_min),
+        sleep_h:        parseFloat(checkinForm.sleep_h),
+        steps:          parseInt(checkinForm.steps),
+        stress:         parseInt(checkinForm.stress),
+        hydration_l:    parseFloat(checkinForm.hydration_l),
+        goal:           savedProfile?.goal || profileForm.goal,
+        aggressiveness: savedProfile?.aggressiveness || profileForm.aggressiveness,
+        sex, age, height_cm,
+      };
+
+      const { data } = await api.post('/checkin', payload);
+      if (data.result) {
+        setModelResult(data.result);
+        setSelectedCalories(data.result.reg_rec);
+        setTotalCheckins(data.total_checkins);
+        setStep('result');
+        toast.success('✅ Check-in შენახულია!');
+      } else {
+        toast.error(data.error || 'მოდელის გამოთვლა ვერ მოხდა');
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'შეცდომა');
     } finally {
       setCheckinLoading(false);
     }
   };
 
+  // ── basket ─────────────────────────────────────────────────────────────────
+  const handleGenerateBasket = async () => {
+    if (!selectedCalories) { toast.error('აირჩიეთ კალორიების რაოდენობა'); return; }
+    setBasketLoading(true);
+    try {
+      const prof = savedProfile || profileForm;
+      const { data } = await basketApi.generate({
+        gender: prof.gender,
+        age: parseInt(prof.age),
+        weight_kg: parseFloat(prof.weight_kg || checkinForm.weight_kg),
+        height_cm: parseFloat(prof.height_cm),
+        activity_level: prof.activity_level || 'medium',
+        goal: prof.goal || profileForm.goal,
+        target_weight_kg: parseFloat(prof.target_weight_kg || prof.weight_kg),
+        eating_window: prof.eating_window || 'standard',
+        carb_sensitivity: prof.carb_sensitivity || 'neutral',
+        hunger_peak: prof.hunger_peak || 'even',
+        vegan_mode: veganMode,
+        excluded_categories: excludedCats,
+        override_calories: selectedCalories,
+      });
+      setBasket(data);
+      toast.success('კალათა გენერირდა!');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'შეცდომა');
+    } finally {
+      setBasketLoading(false);
+    }
+  };
+
+  // ── render ─────────────────────────────────────────────────────────────────
   if (profileLoading) {
     return (
-      <div className="flex justify-center items-center py-32">
-        <Loader2 size={28} className="animate-spin text-primary-500" />
+      <div className="flex justify-center items-center min-h-[60vh]">
+        <Loader2 className="animate-spin text-primary-500" size={32} />
       </div>
     );
   }
 
-  // Suspended user
-  if (user && isSuspended) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 text-center px-4">
-        <div className="w-20 h-20 bg-red-50 rounded-2xl flex items-center justify-center mb-6">
-          <Lock size={32} className="text-red-400" />
-        </div>
-        <h2 className="text-xl font-bold text-gray-900 mb-2">Access Suspended</h2>
-        <p className="text-gray-500 text-sm max-w-sm">
-          Your access has been temporarily suspended. Please renew your gym membership and contact the administrator.
-        </p>
-      </div>
-    );
-  }
-
-  // Not logged in — show gym list
   if (!user) {
     return (
-      <div className="space-y-8 py-6 px-4 max-w-4xl mx-auto">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-primary-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <Lock size={32} className="text-primary-400" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-3">Personalization Service</h2>
-          <p className="text-gray-500 text-sm max-w-md mx-auto leading-relaxed">
-            To access this service, you must be a member of a gym that partners with <strong>FITPRICE</strong>.
-            Sign in with your account or contact your gym administrator.
-          </p>
-          <Link href="/auth/login" className="btn-primary inline-flex items-center gap-2 mt-6">
-            <LogIn size={16} /> Sign In
-          </Link>
-        </div>
-
-        {gyms.length > 0 && (
-          <div>
-            <h3 className="text-center font-semibold text-gray-700 mb-5 text-lg">Our Partner Gyms</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {gyms.map(gym => (
-                <div key={gym.id} className="card hover:shadow-md transition-shadow">
-                  {gym.photo_url ? (
-                    <img src={gym.photo_url} alt={gym.name} className="w-full h-40 object-cover rounded-xl mb-3" />
-                  ) : (
-                    <div className="w-full h-40 bg-gradient-to-br from-primary-100 to-accent-100 rounded-xl mb-3 flex items-center justify-center">
-                      {gym.logo_url ? (
-                        <img src={gym.logo_url} alt={gym.name} className="h-16 object-contain" />
-                      ) : (
-                        <Building2 size={40} className="text-primary-300" />
-                      )}
-                    </div>
-                  )}
-                  <h4 className="font-semibold text-gray-900">{gym.name}</h4>
-                  {gym.address && <p className="text-xs text-gray-500 mt-1">📍 {gym.address}</p>}
-                  {gym.description && <p className="text-xs text-gray-400 mt-2">{gym.description}</p>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+      <div className="max-w-md mx-auto px-4 py-16 text-center">
+        <Brain size={48} className="mx-auto text-primary-300 mb-4" />
+        <h2 className="text-xl font-bold text-gray-900 mb-2">შედით სისტემაში</h2>
+        <p className="text-gray-500 mb-6">პერსონალიზაციისთვის საჭიროა ავტორიზაცია</p>
+        <Link href="/auth/login" className="btn-primary">შესვლა</Link>
       </div>
     );
   }
 
-  // Logged in user — show personalization
-  // If profile already saved, show results directly
-  const profileCompleted = savedProfile?.quiz_completed;
-
   return (
-    <div className="space-y-6 animate-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-display font-bold text-gray-900">Personalization</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {profileCompleted
-              ? `Profile saved · ${savedProfile?.goal === 'lose' ? 'Weight Loss' : savedProfile?.goal === 'gain' ? 'Weight Gain' : 'Maintenance'}`
-              : 'Fill in the questionnaire to get your personal plan'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {profileCompleted && (
-            <Link href="/profile" className="btn-secondary text-sm flex items-center gap-1">
-              Update Profile
-            </Link>
-          )}
-          {checkinNeeded && (
-            <button onClick={() => setShowCheckin(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium animate-pulse">
-              <Scale size={15} /> Weekly Check-in
-            </button>
-          )}
-        </div>
-      </div>
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
 
-      {showCheckin && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-          <div className="card w-full max-w-sm shadow-2xl">
-            <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Scale size={18} className="text-primary-600" /> Weekly Check
-            </h2>
-            <form onSubmit={handleC(onCheckin)} className="space-y-4">
+      {/* ── პროფილი ── */}
+      {step === 'profile' && (
+        <div className="max-w-lg mx-auto">
+          <div className="text-center mb-6">
+            <Brain size={40} className="mx-auto text-primary-500 mb-3" />
+            <h1 className="text-2xl font-display font-bold text-gray-900">პერსონალიზაცია</h1>
+            <p className="text-sm text-gray-500 mt-1">შეავსეთ თქვენი მონაცემები</p>
+          </div>
+
+          <div className="card shadow-lg">
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+
+              {/* სქესი */}
               <div>
-                <label className="label">Current weight (kg)</label>
-                <input type="number" step="0.1" className="input" placeholder="e.g. 78.5"
-                  {...regC('current_weight_kg', { required: true })} />
-              </div>
-              <div>
-                <label className="label">Energy level this week</label>
-                <div className="flex gap-2">
-                  {[1,2,3,4,5].map(n => (
-                    <label key={n} className="flex-1 cursor-pointer">
-                      <input type="radio" value={n} {...regC('energy_level')} className="peer sr-only" />
-                      <div className="text-center py-2 rounded-lg border text-sm transition-all peer-checked:bg-primary-50 peer-checked:border-primary-400 peer-checked:text-primary-700 border-gray-200 text-gray-500">{n}</div>
-                    </label>
-                  ))}
-                </div>
-                <div className="flex justify-between text-xs text-gray-400 mt-1"><span>Low</span><span>High</span></div>
-              </div>
-              <div>
-                <label className="label">Hunger level</label>
-                <div className="flex gap-2">
-                  {[1,2,3,4,5].map(n => (
-                    <label key={n} className="flex-1 cursor-pointer">
-                      <input type="radio" value={n} {...regC('hunger_level')} className="peer sr-only" />
-                      <div className="text-center py-2 rounded-lg border text-sm transition-all peer-checked:bg-primary-50 peer-checked:border-primary-400 peer-checked:text-primary-700 border-gray-200 text-gray-500">{n}</div>
-                    </label>
+                <label className="label">სქესი</label>
+                <div className="grid grid-cols-2 gap-3">
+                  {[['male','♂ მამრობითი'],['female','♀ მდედრობითი']].map(([val, label]) => (
+                    <button key={val} type="button"
+                      onClick={() => setProfileForm({...profileForm, gender: val})}
+                      className={clsx('py-2.5 rounded-xl text-sm font-medium border-2 transition',
+                        profileForm.gender === val
+                          ? 'border-primary-500 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300')}>
+                      {label}
+                    </button>
                   ))}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => setShowCheckin(false)} className="btn-secondary flex-1">Cancel</button>
-                <button type="submit" disabled={checkinLoading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-                  {checkinLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />} Save
-                </button>
+
+              {/* ასაკი, სიმაღლე, წონა */}
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { key:'age', label:'ასაკი', ph:'25', min:16, max:100 },
+                  { key:'height_cm', label:'სიმაღლე (სმ)', ph:'175', min:100, max:250 },
+                  { key:'weight_kg', label:'წონა (კგ)', ph:'70', min:20, max:300 },
+                ].map(({ key, label, ph, min, max }) => (
+                  <div key={key}>
+                    <label className="label">{label}</label>
+                    <input type="number" className="input" placeholder={ph} min={min} max={max}
+                      value={(profileForm as any)[key]}
+                      onChange={e => setProfileForm({...profileForm, [key]: e.target.value})}
+                      required />
+                  </div>
+                ))}
               </div>
+
+              {/* მიზანი */}
+              <div>
+                <label className="label">მიზანი</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ['loss','⬇️ კლება'],
+                    ['maintain','➡️ შენარჩუნება'],
+                    ['gain','⬆️ მომატება'],
+                  ].map(([val, label]) => (
+                    <button key={val} type="button"
+                      onClick={() => setProfileForm({...profileForm, goal: val})}
+                      className={clsx('py-2.5 rounded-xl text-sm font-medium border-2 transition',
+                        profileForm.goal === val
+                          ? 'border-primary-500 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300')}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ტემპი */}
+              <div>
+                <label className="label">ტემპი</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ['conservative','🐢 ნელი'],
+                    ['moderate','⚖️ ზომიერი'],
+                    ['aggressive','🔥 სწრაფი'],
+                  ].map(([val, label]) => (
+                    <button key={val} type="button"
+                      onClick={() => setProfileForm({...profileForm, aggressiveness: val})}
+                      className={clsx('py-2.5 rounded-xl text-sm font-medium border-2 transition',
+                        profileForm.aggressiveness === val
+                          ? 'border-primary-500 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300')}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button type="submit" className="btn-primary w-full py-3 flex items-center justify-center gap-2">
+                <ChevronRight size={16} /> შემდეგი
+              </button>
             </form>
           </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {!profileCompleted && (
-          <div className="lg:col-span-2">
-            <div className="card">
-              <div className="flex items-center gap-2 mb-5">
-                <div className="w-8 h-8 bg-accent-50 rounded-lg flex items-center justify-center">
-                  <Brain size={16} className="text-accent-600" />
-                </div>
-                <h2 className="font-semibold text-gray-900">Questionnaire</h2>
-              </div>
-              <div className="flex rounded-xl border border-gray-200 p-1 gap-1 mb-5">
-                {[{ n: 1, label: 'Block I' }, { n: 2, label: 'Block II' }, { n: 3, label: 'Goal' }].map(({ n, label }) => (
-                  <button key={n} type="button" onClick={() => setBlock(n)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all ${block === n ? 'bg-primary-600 text-white' : 'text-gray-500 hover:text-gray-700'}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                {block === 1 && (
-                  <>
-                    <div>
-                      <label className="label">Gender</label>
-                      <div className="flex gap-2">
-                        {[{ v: 'male', l: 'Male' }, { v: 'female', l: 'Female' }].map(({ v, l }) => (
-                          <label key={v} className="flex-1 cursor-pointer">
-                            <input type="radio" value={v} {...register('gender')} className="peer sr-only" />
-                            <div className="text-center py-2.5 px-3 rounded-xl border border-gray-200 text-sm font-medium transition-all peer-checked:border-primary-400 peer-checked:bg-primary-50 peer-checked:text-primary-700 text-gray-600">{l}</div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      {[{ name: 'age', label: 'Age', placeholder: '30' }, { name: 'height_cm', label: 'Height (cm)', placeholder: '175' }, { name: 'weight_kg', label: 'Weight (kg)', placeholder: '75' }].map(({ name, label, placeholder }) => (
-                        <div key={name}>
-                          <label className="label text-xs">{label}</label>
-                          <input type="number" className="input text-sm py-2" placeholder={placeholder} {...register(name)} />
-                        </div>
-                      ))}
-                    </div>
-                    <div>
-                      <label className="label">Daily activity</label>
-                      <div className="space-y-2">
-                        {Object.entries(ACTIVITY_LABELS).map(([v, l]) => (
-                          <label key={v} className="cursor-pointer">
-                            <input type="radio" value={v} {...register('activity_level')} className="peer sr-only" />
-                            <div className="flex items-start gap-2 p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200">
-                              <span className="text-gray-700">{l}</span>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <button type="button" onClick={() => setBlock(2)} className="btn-primary w-full">Next →</button>
-                  </>
-                )}
-                {block === 2 && (
-                  <>
-                    <div>
-                      <label className="label">Eating window</label>
-                      <div className="space-y-2">
-                        {Object.entries(EATING_WINDOW_LABELS).map(([v, l]) => (
-                          <label key={v} className="cursor-pointer">
-                            <input type="radio" value={v} {...register('eating_window')} className="peer sr-only" />
-                            <div className="p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200 text-gray-700">{l}</div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="label">Carb sensitivity</label>
-                      <div className="space-y-2">
-                        {Object.entries(CARB_LABELS).map(([v, l]) => (
-                          <label key={v} className="cursor-pointer">
-                            <input type="radio" value={v} {...register('carb_sensitivity')} className="peer sr-only" />
-                            <div className="p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200 text-gray-700">{l}</div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="label">Hunger peak</label>
-                      <div className="space-y-2">
-                        {Object.entries(HUNGER_LABELS).map(([v, l]) => (
-                          <label key={v} className="cursor-pointer">
-                            <input type="radio" value={v} {...register('hunger_peak')} className="peer sr-only" />
-                            <div className="p-2.5 rounded-xl border border-gray-100 text-sm transition-all peer-checked:border-primary-300 peer-checked:bg-primary-50 hover:border-gray-200 text-gray-700">{l}</div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setBlock(1)} className="btn-secondary flex-1">← Back</button>
-                      <button type="button" onClick={() => setBlock(3)} className="btn-primary flex-1">Next →</button>
-                    </div>
-                  </>
-                )}
-                {block === 3 && (
-                  <>
-                    <div>
-                      <label className="label">Goal</label>
-                      <div className="space-y-2">
-                        {Object.entries(GOAL_CONFIG).map(([v, { label, icon: Icon, color, info }]) => (
-                          <label key={v} className="cursor-pointer">
-                            <input type="radio" value={v} {...register('goal')} className="peer sr-only" />
-                            <div className={clsx('flex items-start gap-3 p-3 rounded-xl border transition-all peer-checked:ring-2 peer-checked:ring-primary-400', goal === v ? color : 'border-gray-100 hover:border-gray-200')}>
-                              <Icon size={16} className="mt-0.5 shrink-0" />
-                              <div>
-                                <div className="text-sm font-medium">{label}</div>
-                                <div className="text-xs text-gray-500 mt-0.5">{info}</div>
-                              </div>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    {(goal === 'lose' || goal === 'gain') && (
-                      <div>
-                        <label className="label">Target weight (kg) — optional</label>
-                        <input type="number" className="input text-sm" placeholder="e.g. 70" {...register('target_weight_kg')} />
-                      </div>
-                    )}
-                    <label className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 cursor-pointer hover:bg-gray-50">
-                      <input type="checkbox" checked={veganMode} onChange={e => setVeganMode(e.target.checked)} className="w-4 h-4 accent-green-600" />
-                      <div className="flex items-center gap-2">
-                        <Leaf size={15} className="text-green-600" />
-                        <span className="text-sm text-gray-700">Vegan diet</span>
-                      </div>
-                    </label>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={() => setBlock(2)} className="btn-secondary flex-1">← Back</button>
-                      <button type="submit" disabled={loading} className="btn-primary flex-1 flex items-center justify-center gap-2">
-                        {loading ? <><Loader2 size={15} className="animate-spin" /> Calculating...</> : 'Calculate'}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </form>
+      {/* ── Check-in ── */}
+      {step === 'checkin' && (
+        <div className="max-w-lg mx-auto">
+          <div className="text-center mb-6">
+            <RefreshCw size={36} className="mx-auto text-primary-500 mb-3" />
+            <h1 className="text-2xl font-display font-bold text-gray-900">კვირეული Check-in</h1>
+            <p className="text-sm text-gray-500 mt-1">კვირა #{totalCheckins} · შეავსეთ ამ კვირის მონაცემები</p>
+          </div>
+
+          {/* progress bar */}
+          <div className="mb-4 space-y-1">
+            <div className="bg-gray-100 rounded-full h-2 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-primary-400 to-accent-500 rounded-full"
+                style={{ width: `${Math.min((totalCheckins / 14) * 100, 100)}%` }} />
+            </div>
+            <div className="flex justify-between text-[10px] text-gray-400">
+              <span>Phase 1</span><span>Phase 2 (4კვ)</span>
+              <span>Phase 3 (8კვ)</span><span>Phase 4 (14კვ)</span>
             </div>
           </div>
-        )}
 
-        <div className={clsx('space-y-4', profileCompleted ? 'lg:col-span-5' : 'lg:col-span-3')}>
-          {result ? (
-            <>
-              {result.warnings?.map((w: string, i: number) => (
-                <div key={i} className="flex items-start gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-xl">
-                  <AlertTriangle size={16} className="text-yellow-600 shrink-0 mt-0.5" />
-                  <p className="text-sm text-yellow-800">{w}</p>
+          <div className="card shadow-lg">
+            <form onSubmit={handleCheckin} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { key:'weight_kg', label:'წონა (კგ)', icon:Scale, ph:'70.5', step:'0.1', min:20, max:300, hint:'დილით, უზმოზე' },
+                  { key:'calories', label:'კალორიები (კკ)', icon:Flame, ph:'2000', step:'50', min:500, max:10000, hint:'დღიური მოხმარება', full:true },
+                  { key:'exercise_min', label:'ვარჯიში (წთ)', icon:Dumbbell, ph:'45', step:'5', min:0, max:900, hint:'კვირის სულ' },
+                  { key:'sleep_h', label:'ძილი (სთ)', icon:Moon, ph:'7.5', step:'0.5', min:2, max:14, hint:'ღამის საშუალო' },
+                  { key:'steps', label:'ნაბიჯები', icon:Footprints, ph:'8000', step:'500', min:0, max:80000, hint:'დღიური საშუალო' },
+                  { key:'stress', label:'სტრესი (1–40)', icon:BrainIcon, ph:'10', step:'1', min:1, max:40, hint:'1=მინ · 40=მაქს' },
+                  { key:'hydration_l', label:'წყალი (ლ)', icon:Droplets, ph:'2.0', step:'0.1', min:0.5, max:10, hint:'დღიური მოხმარება' },
+                ].map(({ key, label, icon:Icon, ph, step, min, max, hint, full }: any) => (
+                  <div key={key} className={full ? 'col-span-2' : ''}>
+                    <label className="label flex items-center gap-1.5">
+                      <Icon size={13} className="text-primary-500"/> {label}
+                    </label>
+                    <input type="number" step={step} min={min} max={max}
+                      className="input" placeholder={ph}
+                      value={(checkinForm as any)[key]}
+                      onChange={e => setCheckinForm({...checkinForm, [key]: e.target.value})}
+                      required />
+                    <p className="text-[11px] text-gray-400 mt-0.5">{hint}</p>
+                  </div>
+                ))}
+              </div>
+
+              <button type="submit" disabled={checkinLoading}
+                className="btn-primary w-full py-3 flex items-center justify-center gap-2">
+                {checkinLoading
+                  ? <><Loader2 size={16} className="animate-spin"/> გამოთვლა...</>
+                  : <><ChevronRight size={16}/> შენახვა და გამოთვლა</>}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── შედეგი ── */}
+      {step === 'result' && modelResult && (
+        <div className="space-y-6">
+
+          {/* მოდელის შედეგი */}
+          <div className={clsx('card border-2 shadow-lg',
+            modelResult.plateau_detected ? 'border-yellow-300' : 'border-primary-100')}>
+
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  {modelResult.plateau_detected
+                    ? <AlertTriangle size={18} className="text-yellow-600"/>
+                    : <CheckCircle size={18} className="text-green-600"/>}
+                  <h2 className="font-bold text-gray-900 text-lg">
+                    {modelResult.plateau_detected ? 'პლატო' : 'კალორიების რეკომენდაცია'}
+                  </h2>
+                </div>
+                <p className="text-xs text-gray-500">
+                  Phase {modelResult.phase} · კვირა #{totalCheckins} · {modelResult.message}
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-primary-600">{modelResult.tdee_kcal}</div>
+                <div className="text-xs text-gray-400">კკ/დღე TDEE</div>
+              </div>
+            </div>
+
+            {/* 3 რეკომენდაცია */}
+            <p className="text-xs text-gray-500 mb-3">აირჩიეთ კალორიების რაოდენობა კალათის გასაკეთებლად:</p>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {[
+                { label:'ცხიმის\nმოდელი', key:'fat_rec', dm:'expected_dm_fat_kg', color:'blue', desc:'7700 კკ/კგ' },
+                { label:'კუნთის\nმოდელი', key:'mus_rec', dm:'expected_dm_mus_kg', color:'green', desc:'950 კკ/კგ' },
+                { label:'ML\nრეგრესია', key:'reg_rec', dm:'expected_dm_reg_kg', color:'purple', desc:'პერსონალიზებული' },
+              ].map(({ label, key, dm, color, desc }) => {
+                const val = modelResult[key];
+                const isSelected = selectedCalories === val;
+                return (
+                  <button key={key} onClick={() => setSelectedCalories(val)}
+                    className={clsx('rounded-xl p-3 text-center border-2 transition-all',
+                      isSelected
+                        ? `border-${color}-500 bg-${color}-50 shadow-sm`
+                        : 'border-gray-200 hover:border-gray-300 bg-white')}>
+                    <div className="text-[10px] font-medium text-gray-500 mb-1 whitespace-pre-line leading-tight">{label}</div>
+                    <div className={clsx('text-2xl font-bold',
+                      color === 'blue' ? 'text-blue-700' : color === 'green' ? 'text-green-700' : 'text-purple-700')}>
+                      {val}
+                    </div>
+                    <div className="text-[10px] text-gray-400">კკ/დღე</div>
+                    <div className="text-[10px] font-medium text-gray-500 mt-1">{desc}</div>
+                    <div className={clsx('text-xs font-semibold mt-1',
+                      modelResult[dm] < 0 ? 'text-blue-600' : 'text-green-600')}>
+                      {modelResult[dm] > 0 ? '+' : ''}{modelResult[dm]} კგ/თვ
+                    </div>
+                    {isSelected && (
+                      <div className="mt-1.5">
+                        <CheckCircle size={14} className={clsx('mx-auto',
+                          color === 'blue' ? 'text-blue-500' : color === 'green' ? 'text-green-500' : 'text-purple-500')} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* დეტალები */}
+            <div className="grid grid-cols-4 gap-2 text-xs">
+              {[
+                { label:'ადაპტაცია', val:`×${Number(modelResult.adaptation_factor||1).toFixed(3)}` },
+                { label:'λ', val:Number(modelResult.lambda_i||1).toFixed(3) },
+                { label:'დეფ. კვ.', val:`${modelResult.deficit_weeks||0}` },
+                { label:'Phase', val:modelResult.phase },
+              ].map(({ label, val }) => (
+                <div key={label} className="bg-gray-50 rounded-lg px-2 py-1.5 text-center">
+                  <div className="text-gray-400">{label}</div>
+                  <div className="font-semibold text-gray-800">{val}</div>
                 </div>
               ))}
-              <div className="card">
-                <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Activity size={16} className="text-primary-600" /> Metabolic Calculations
-                </h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { label: 'BMR', val: result.bmr, unit: 'kcal', desc: 'Base rate' },
-                    { label: 'TDEE', val: result.tdee, unit: 'kcal', desc: 'Total burn' },
-                    { label: 'Target', val: result.adjusted_calories, unit: 'kcal', desc: 'Daily', highlight: true },
-                    { label: 'BMI', val: result.bmi, unit: '', desc: result.bmi_class || 'Normal' },
-                  ].map(({ label, val, unit, desc, highlight }) => (
-                    <div key={label} className={clsx('rounded-xl p-3 text-center', highlight ? 'bg-primary-50 border border-primary-200' : 'bg-gray-50')}>
-                      <div className={clsx('font-bold text-xl', highlight ? 'text-primary-700' : 'text-gray-800')}>{val}{unit}</div>
-                      <div className="text-xs font-medium text-gray-500">{label}</div>
-                      <div className="text-[10px] text-gray-400">{desc}</div>
-                    </div>
-                  ))}
-                </div>
+            </div>
+
+            {modelResult.diet_break_suggested && (
+              <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded-xl text-xs text-orange-800 flex items-start gap-2">
+                <AlertTriangle size={13} className="shrink-0 mt-0.5"/>
+                <span>Diet break რეკომენდებულია — 1-2 კვირა TDEE-ზე ჭამა.</span>
               </div>
-              <div className="card">
-                <h3 className="font-semibold text-gray-900 mb-4">Macronutrients (daily)</h3>
-                <div className="space-y-3">
-                  {[
-                    { label: 'Protein', val: result.macros?.protein, color: 'bg-blue-400', unit: 'g' },
-                    { label: 'Carbs', val: result.macros?.carbs, color: 'bg-green-400', unit: 'g' },
-                    { label: 'Fat', val: result.macros?.fat, color: 'bg-yellow-400', unit: 'g' },
-                  ].map(({ label, val, color, unit }) => {
-                    if (!val) return null;
-                    const total = (result.macros?.protein || 0) + (result.macros?.carbs || 0) + (result.macros?.fat || 0);
-                    const pct = total > 0 ? Math.round((val / total) * 100) : 0;
-                    return (
-                      <div key={label}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="font-medium text-gray-700">{label}</span>
-                          <span className="text-gray-500">{val}{unit} <span className="text-gray-400 text-xs">({pct}%)</span></span>
-                        </div>
-                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+            )}
+
+            <button onClick={() => { setStep('checkin'); setCheckinForm({ weight_kg:'', calories:'', exercise_min:'', sleep_h:'', steps:'', stress:'', hydration_l:'' }); }}
+              className="mt-3 text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+              <RefreshCw size={11}/> ახალი check-in
+            </button>
+          </div>
+
+          {/* კალათის გენერაცია */}
+          <div className="card shadow-lg">
+            <h2 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <ShoppingCart size={16} className="text-primary-600"/> კალათის გენერაცია
+            </h2>
+            <p className="text-sm text-gray-500 mb-4">
+              არჩეული: <span className="font-bold text-primary-600">{selectedCalories} კკ/დღე</span>
+            </p>
+
+            <div className="flex items-center gap-3 mb-4 flex-wrap">
+              <button onClick={() => setShowFilter(!showFilter)}
+                className="flex items-center gap-2 btn-secondary text-sm">
+                <Filter size={14}/> ფილტრი
+              </button>
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer">
+                <input type="checkbox" checked={veganMode}
+                  onChange={e => setVeganMode(e.target.checked)}
+                  className="w-4 h-4 accent-green-500" />
+                <Leaf size={14} className="text-green-500"/> ვეგანური
+              </label>
+            </div>
+
+            {showFilter && (
+              <div className="mb-4">
+                <CategoryFilter categories={categories} excluded={excludedCats} onChange={setExcludedCats} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="card text-center">
-                  <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2">
-                    <Droplets size={20} className="text-blue-500" />
-                  </div>
-                  <div className="font-bold text-xl text-blue-600">{result.water_ml} ml</div>
-                  <div className="text-xs text-gray-400 mt-0.5">Water per day</div>
-                </div>
-                {result.timeline && (
-                  <div className="card text-center">
-                    <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center mx-auto mb-2">
-                      <Calendar size={20} className="text-primary-500" />
-                    </div>
-                    <div className="font-bold text-lg text-primary-600">{result.timeline}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">Target time</div>
-                    {result.weekly_rate && <div className="text-xs text-gray-500">{result.weekly_rate}</div>}
-                  </div>
-                )}
-              </div>
-              {result.meal_plan && (
-                <div className="card">
-                  <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                    <Utensils size={16} className="text-primary-600" /> Meal Plan ({result.meals_per_day} meals/day)
-                  </h3>
-                  <div className="space-y-2">
-                    {result.meal_plan.map((meal: any, i: number) => (
-                      <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                        <div className="w-16 text-xs text-gray-400 font-medium">{meal.time}</div>
-                        <div className="flex-1">
-                          <span className="font-medium text-sm text-gray-800">{meal.name}</span>
-                          <div className="text-xs text-gray-400">{meal.ratio}% of calories</div>
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-500">
-                          <span className="font-semibold text-gray-700">{meal.calories} kcal</span>
-                          <span>P:{meal.protein}g</span>
-                          <span>F:{meal.fat}g</span>
-                          <span>C:{meal.carbs}g</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div className="card border-2 border-primary-100 bg-primary-50/30">
-                <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                  <ShoppingCart size={16} className="text-primary-600" /> Generate Basket
-                </h3>
-                <p className="text-xs text-gray-500 mb-3">
-                  System will build a {result.adjusted_calories} kcal basket based on your profile
-                </p>
-                <div className="flex gap-2 mb-3">
-                  <button onClick={() => setVeganMode(!veganMode)}
-                    className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all', veganMode ? 'bg-green-500 text-white border-green-500' : 'bg-white text-green-700 border-green-300')}>
-                    <Leaf size={12} /> Vegan
-                  </button>
-                  <button onClick={() => setShowFilter(!showFilter)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border bg-white text-gray-600 border-gray-200 hover:bg-gray-50">
-                    <Filter size={12} /> Filter {excludedCats.length > 0 && `(-${excludedCats.length})`}
-                  </button>
-                </div>
-                {showFilter && (
-                  <div className="mb-3">
-                    <CategoryFilter categories={categories} excluded={excludedCats} onChange={setExcludedCats} />
-                  </div>
-                )}
-                <button onClick={handleGenerateBasket} disabled={basketLoading}
-                  className="btn-primary w-full flex items-center justify-center gap-2">
-                  {basketLoading ? <><Loader2 size={15} className="animate-spin" /> Generating...</> : <><ShoppingCart size={15} /> Generate Basket ({result.adjusted_calories} kcal)</>}
-                </button>
-              </div>
-              {basket.length > 0 && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <ShoppingCart size={16} className="text-primary-600" /> Food Basket
-                      <span className="tag bg-primary-50 text-primary-700">{basket.length} items</span>
-                    </h3>
-                    <button onClick={() => setShowRecipe(true)} className="btn-secondary flex items-center gap-2 text-sm">
-                      <ChefHat size={15} /> Recipe
-                    </button>
-                  </div>
-                  <BasketResults />
-                </div>
-              )}
-              {showRecipe && <RecipeModal basket={basket} totals={totals} onClose={() => setShowRecipe(false)} />}
-            </>
-          ) : (
-            <div className="card flex flex-col items-center justify-center py-24 text-center">
-              <div className="w-16 h-16 bg-accent-50 rounded-2xl flex items-center justify-center mb-4">
-                <Brain size={28} className="text-accent-300" />
-              </div>
-              <p className="text-gray-400 text-sm">
-                {savedProfile ? 'Profile saved. Loading your daily plan...' : 'Fill in the 3-block questionnaire to get your personalized plan'}
-              </p>
+            )}
+
+            <button onClick={handleGenerateBasket} disabled={basketLoading || !selectedCalories}
+              className="btn-primary w-full py-3 flex items-center justify-center gap-2">
+              {basketLoading
+                ? <><Loader2 size={16} className="animate-spin"/> გენერირება...</>
+                : <><ShoppingCart size={16}/> კალათის გენერირება</>}
+            </button>
+          </div>
+
+          {/* კალათის შედეგი */}
+          {basket && (
+            <div className="space-y-4">
+              <BasketResults />
+              <button onClick={() => setShowRecipe(true)}
+                className="btn-secondary w-full flex items-center justify-center gap-2">
+                <ChefHat size={15}/> რეცეპტების ნახვა
+              </button>
             </div>
           )}
         </div>
-      </div>
+      )}
+
+      {showRecipe && <RecipeModal onClose={() => setShowRecipe(false)} />}
     </div>
   );
 }
