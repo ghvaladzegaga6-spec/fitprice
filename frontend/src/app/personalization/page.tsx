@@ -517,7 +517,7 @@ export default function PersonalizationPage() {
         </div>
       )}
 
-      {showRecipe && <RecipeModal onClose={() => setShowRecipe(false)} />}
+      {showRecipe && basket && <RecipeModal basket={basket} totals={totals} onClose={() => setShowRecipe(false)} />}
     </div>
   );
 }
