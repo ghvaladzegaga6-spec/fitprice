@@ -9,9 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 router = APIRouter()
 
-# Global model state
 _model = None
-_model_fitted = False
 
 def get_model():
     global _model
@@ -60,10 +58,7 @@ class PredictRequest(BaseModel):
 @router.get("/status")
 def status():
     m = get_model()
-    return {
-        "fitted": m.is_fitted,
-        "persons": len(m.person_phases) if m.is_fitted else 0
-    }
+    return {"fitted": m.is_fitted, "persons": len(m.person_phases) if m.is_fitted else 0}
 
 @router.post("/fit")
 def fit(req: FitRequest):
@@ -87,7 +82,10 @@ def fit(req: FitRequest):
 
 @router.post("/predict")
 def predict(req: PredictRequest):
-    from calorie_model_v2 import phase1_tdee, _MIN_CAL_FEMALE, _MIN_CAL_MALE, _KCAL_PER_KG
+    from calorie_model_v2 import (
+        phase1_tdee, _MIN_CAL_FEMALE, _MIN_CAL_MALE,
+        _KCAL_PER_KG, _KCAL_PER_KG_MUS, _MAX_DEFICIT, _MAX_DW_WEEK
+    )
 
     row = pd.Series({
         'person_id': req.person_id, 'week': req.week,
@@ -103,61 +101,96 @@ def predict(req: PredictRequest):
     m = get_model()
     pid = req.person_id
 
-    # Phase 1 fallback
+    # Phase 1 — Mifflin-St Jeor
     if not m.is_fitted or pid not in m.person_phases:
-        tdee = phase1_tdee(row)
+        try:
+            tdee = phase1_tdee(row)
+        except Exception as e:
+            raise HTTPException(500, f"phase1_tdee error: {str(e)}")
+
         min_c = _MIN_CAL_FEMALE if req.sex == 0 else _MIN_CAL_MALE
-        deltas = {
+
+        deficits = {
             ('loss','conservative'): -300, ('loss','moderate'): -500,
-            ('loss','aggressive'): -750, ('gain','conservative'): 200,
-            ('gain','moderate'): 300, ('gain','aggressive'): 500,
-            ('maintain','moderate'): 0, ('recomp','moderate'): 0,
+            ('loss','aggressive'): -750,
+            ('gain','conservative'): 200, ('gain','moderate'): 300,
+            ('gain','aggressive'): 500,
+            ('maintain','conservative'): 0, ('maintain','moderate'): 0, ('maintain','aggressive'): 0,
+            ('recomp','moderate'): 0,
         }
-        delta = deltas.get((req.goal, req.aggressiveness), 0)
-        target = max(round(tdee + delta), min_c)
-        dw = delta * 7 / _KCAL_PER_KG
+        delta = deficits.get((req.goal, req.aggressiveness),
+                             deficits.get((req.goal, 'moderate'), 0))
+
+        # კლინიკური ზღვრები
+        if delta < 0:
+            delta = max(delta, -_MAX_DEFICIT)
+        target = tdee + delta
+        if target < min_c:
+            target = float(min_c)
+            delta = target - tdee
+        weekly_dw = delta * 7.0 / _KCAL_PER_KG
+        if weekly_dw < -_MAX_DW_WEEK:
+            weekly_dw = -_MAX_DW_WEEK
+            delta = weekly_dw * _KCAL_PER_KG / 7.0
+            target = tdee + delta
+
+        fat_target = round(target)
+        mus_target = round(target)
+        reg_target = round(target)
+        dw = round(weekly_dw, 3)
         weeks_left = max(0, 4 - req.week)
+
         return {
             "person_id": pid, "phase": 1,
             "tdee_kcal": round(tdee),
-            "fat_rec": target, "mus_rec": target, "reg_rec": target,
-            "adaptation_factor": 1.0, "lambda_i": 1.0,
+            "fat_rec": fat_target,
+            "mus_rec": mus_target,
+            "reg_rec": reg_target,
+            "adaptation_factor": 1.0,
+            "lambda_i": 1.0,
             "plateau_detected": False,
-            "balance_dw_kg": round(dw, 3),
-            "adapted_dw_kg": round(dw, 3),
+            "balance_dw_kg": dw,
+            "adapted_dw_kg": dw,
             "expected_dm_fat_kg": round(dw * 4, 2),
             "expected_dm_mus_kg": round(dw * 4, 2),
             "expected_dm_reg_kg": round(dw * 4, 2),
             "diet_break_suggested": False,
-            "deficit_weeks": 0, "rho_ar1": 0,
+            "deficit_weeks": 0,
+            "rho_ar1": 0,
             "weeks_until_next_phase": weeks_left,
-            "message": f"Phase 1 — საბაზო ფორმულა. კიდევ {weeks_left} კვ. Phase 2-მდე."
+            "message": f"Phase 1 — Mifflin-St Jeor. კიდევ {weeks_left} კვ. Phase 2-მდე."
         }
 
+    # Phase 2-4
     try:
         pred = m.predict(pid, row, update_phase4=True)
-        rec = m.recommend(pid, goal=req.goal, aggressiveness=req.aggressiveness,
-                          plateau=pred['plateau_detected'])
+        rec = m.recommend(
+            pid,
+            goal=req.goal,
+            aggressiveness=req.aggressiveness,
+            plateau=pred['plateau_detected']
+        )
         phase = m.person_phases.get(pid, 1)
         next_phase_weeks = {1: 4, 2: 8, 3: 14}
         weeks_left = max(0, next_phase_weeks.get(phase, 14) - req.week)
-        msgs = {
-            1: f"Phase 1 — საბაზო. კიდევ {weeks_left} კვ. Phase 2-მდე.",
-            2: f"Phase 2 — პერსონალიზებული. კიდევ {weeks_left} კვ. Phase 3-მდე.",
-            3: f"Phase 3 — ML კორექცია. კიდევ {weeks_left} კვ. Phase 4-მდე.",
-            4: "Phase 4 — Kalman Filter. მაქსიმალური სიზუსტე! ✅",
-        }
+
         if pred['plateau_detected']:
-            msg = "⚠️ პლატო! 1-2 კვირა TDEE-ზე ჭამა რეკომენდებულია."
+            msg = "⚠️ პლატო! 1-2 კვირა TDEE-ზე ჭამა (diet break) რეკომენდებულია."
         else:
+            msgs = {
+                1: f"Phase 1 — Mifflin-St Jeor. კიდევ {weeks_left} კვ. Phase 2-მდე.",
+                2: f"Phase 2 — პერსონალიზებული. კიდევ {weeks_left} კვ. Phase 3-მდე.",
+                3: f"Phase 3 — ML კორექცია. კიდევ {weeks_left} კვ. Phase 4-მდე.",
+                4: "Phase 4 — Kalman Filter. მაქსიმალური სიზუსტე! ✅",
+            }
             msg = msgs.get(phase, "")
 
         return {
             "person_id": pid, "phase": phase,
             "tdee_kcal": pred['tdee_kcal'],
-            "fat_rec": rec['FAT_REC'],
-            "mus_rec": rec['MUS_REC'],
-            "reg_rec": rec['REG_REC'],
+            "fat_rec": int(rec['FAT_REC']),
+            "mus_rec": int(rec['MUS_REC']),
+            "reg_rec": int(rec['REG_REC']),
             "adaptation_factor": pred['adaptation_factor'],
             "lambda_i": pred['lambda_i'],
             "plateau_detected": pred['plateau_detected'],
@@ -170,9 +203,6 @@ def predict(req: PredictRequest):
             "deficit_weeks": pred.get('deficit_weeks', 0),
             "rho_ar1": pred.get('rho_ar1', 0),
             "weeks_until_next_phase": weeks_left,
-            "tdee_fat_kcal": rec.get('tdee_fat_kcal'),
-            "tdee_mus_kcal": rec.get('tdee_mus_kcal'),
-            "tdee_reg_kcal": rec.get('tdee_reg_kcal'),
             "message": msg
         }
     except Exception as e:
