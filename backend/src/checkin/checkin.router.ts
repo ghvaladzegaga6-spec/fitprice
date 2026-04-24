@@ -11,101 +11,158 @@ const pyH = () => ({ 'X-Internal-Token': INTERNAL_TOKEN, 'Content-Type': 'applic
 
 checkinRouter.post('/', authenticate, async (req: any, res: Response) => {
   const schema = Joi.object({
-    weight_kg: Joi.number().min(20).max(300).required(),
-    calories: Joi.number().integer().min(500).max(10000).required(),
-    exercise_min: Joi.number().integer().min(0).max(900).required(),
-    sleep_h: Joi.number().min(2).max(14).required(),
-    steps: Joi.number().integer().min(0).max(80000).required(),
-    stress: Joi.number().integer().min(1).max(40).required(),
-    hydration_l: Joi.number().min(0.5).max(10).required(),
-    goal: Joi.string().valid('loss','gain','maintain').required(),
+    weight_kg:      Joi.number().min(20).max(300).required(),
+    calories:       Joi.number().integer().min(500).max(10000).required(),
+    exercise_min:   Joi.number().integer().min(0).max(900).required(),
+    sleep_h:        Joi.number().min(2).max(14).required(),
+    steps:          Joi.number().integer().min(0).max(80000).required(),
+    stress:         Joi.number().integer().min(1).max(40).required(),
+    hydration_l:    Joi.number().min(0.5).max(10).required(),
+    goal:           Joi.string().valid('loss','gain','maintain').required(),
     aggressiveness: Joi.string().valid('conservative','moderate','aggressive').required(),
-    sex: Joi.number().integer().min(0).max(1),
-    age: Joi.number().integer().min(16).max(100),
-    height_cm: Joi.number().min(100).max(250),
+    sex:            Joi.number().integer().min(0).max(1),
+    age:            Joi.number().integer().min(16).max(100),
+    height_cm:      Joi.number().min(100).max(250),
   });
+
   const { error, value } = schema.validate(req.body);
   if (error) return res.status(400).json({ error: error.details[0].message });
 
   const userId = req.userId;
+
+  // პროფილიდან ინფო — sex, age, height_cm, target_weight_kg
   const profileRow = await db.query(
-    `SELECT CASE WHEN gender='male' THEN 1 ELSE 0 END as sex, age, height_cm FROM user_profiles WHERE user_id=$1`,
+    `SELECT
+       CASE WHEN gender='male' THEN 1 ELSE 0 END as sex,
+       age, height_cm, target_weight_kg,
+       aggressiveness, goal
+     FROM user_profiles WHERE user_id=$1`,
     [userId]
   );
   const profile = profileRow.rows[0] || {};
-  const sex = value.sex ?? parseInt(profile.sex) ?? 1;
-  const age = value.age ?? parseInt(profile.age) ?? 25;
-  const height_cm = value.height_cm ?? parseFloat(profile.height_cm) ?? 170;
+  const sex            = value.sex       ?? parseInt(profile.sex)       ?? 1;
+  const age            = value.age       ?? parseInt(profile.age)       ?? 25;
+  const height_cm      = value.height_cm ?? parseFloat(profile.height_cm) ?? 170;
+  const target_weight  = profile.target_weight_kg ? parseFloat(profile.target_weight_kg) : null;
 
-  const cntRow = await db.query('SELECT COUNT(*) as count FROM model_checkins WHERE user_id=$1', [userId]);
+  if (!age || !height_cm) {
+    return res.status(400).json({ error: 'ასაკი და სიმაღლე სავალდებულოა. შეავსე პროფილი.' });
+  }
+
+  // კვირის ნომერი
+  const cntRow = await db.query(
+    'SELECT COUNT(*) as count FROM model_checkins WHERE user_id=$1', [userId]);
   const week = parseInt(cntRow.rows[0].count);
 
+  // DB-ში შენახვა
   await db.query(`
-    INSERT INTO model_checkins (user_id,week,weight_kg,calories,exercise_min,sleep_h,steps,stress,hydration_l)
+    INSERT INTO model_checkins
+      (user_id,week,weight_kg,calories,exercise_min,sleep_h,steps,stress,hydration_l)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
     ON CONFLICT (user_id,week) DO UPDATE SET
-      weight_kg=EXCLUDED.weight_kg,calories=EXCLUDED.calories,exercise_min=EXCLUDED.exercise_min,
-      sleep_h=EXCLUDED.sleep_h,steps=EXCLUDED.steps,stress=EXCLUDED.stress,
-      hydration_l=EXCLUDED.hydration_l,recorded_at=NOW()
-  `, [userId,week,value.weight_kg,value.calories,value.exercise_min,value.sleep_h,value.steps,value.stress,value.hydration_l]);
+      weight_kg=EXCLUDED.weight_kg, calories=EXCLUDED.calories,
+      exercise_min=EXCLUDED.exercise_min, sleep_h=EXCLUDED.sleep_h,
+      steps=EXCLUDED.steps, stress=EXCLUDED.stress,
+      hydration_l=EXCLUDED.hydration_l, recorded_at=NOW()
+  `, [userId,week,value.weight_kg,value.calories,value.exercise_min,
+      value.sleep_h,value.steps,value.stress,value.hydration_l]);
 
-  const allCheckins = await db.query('SELECT * FROM model_checkins WHERE user_id=$1 ORDER BY week ASC', [userId]);
+  const allCheckins = await db.query(
+    'SELECT * FROM model_checkins WHERE user_id=$1 ORDER BY week ASC', [userId]);
 
   try {
-    const payload = allCheckins.rows.map((c:any) => ({
-      person_id:userId, week:Number(c.week), weight_kg:parseFloat(c.weight_kg),
-      calories:parseInt(c.calories), exercise_min:parseInt(c.exercise_min),
-      sleep_h:parseFloat(c.sleep_h), steps:parseInt(c.steps), stress:parseInt(c.stress),
-      hydration_l:parseFloat(c.hydration_l), sex, age, height_cm,
-      goal:value.goal, aggressiveness:value.aggressiveness,
+    const payload = allCheckins.rows.map((c: any) => ({
+      person_id: userId,
+      week:           Number(c.week),
+      weight_kg:      parseFloat(c.weight_kg),
+      calories:       parseInt(c.calories),
+      exercise_min:   parseInt(c.exercise_min),
+      sleep_h:        parseFloat(c.sleep_h),
+      steps:          parseInt(c.steps),
+      stress:         parseInt(c.stress),
+      hydration_l:    parseFloat(c.hydration_l),
+      sex, age, height_cm,
+      goal:           value.goal,
+      aggressiveness: value.aggressiveness,
+      target_weight_kg: target_weight,
     }));
 
+    // Fit (4+ კვირა)
     if (payload.length >= 4) {
-      await axios.post(`${PYTHON_URL}/model/fit`, { checkins: payload },
-        { headers: pyH(), timeout: 120000 }).catch(e => console.error('fit error:', e.message));
+      await axios.post(`${PYTHON_URL}/model/fit`,
+        { checkins: payload },
+        { headers: pyH(), timeout: 120000 }
+      ).catch(e => console.error('fit error:', e.message));
     }
 
+    // Predict — target_weight_kg გადაეცემა
     const predictRes = await axios.post(`${PYTHON_URL}/model/predict`, {
-      person_id:userId, week, weight_kg:value.weight_kg, calories:value.calories,
-      exercise_min:value.exercise_min, sleep_h:value.sleep_h, steps:value.steps,
-      stress:value.stress, hydration_l:value.hydration_l, sex, age, height_cm,
-      goal:value.goal, aggressiveness:value.aggressiveness,
+      person_id:      userId,
+      week,
+      weight_kg:      value.weight_kg,
+      calories:       value.calories,
+      exercise_min:   value.exercise_min,
+      sleep_h:        value.sleep_h,
+      steps:          value.steps,
+      stress:         value.stress,
+      hydration_l:    value.hydration_l,
+      sex, age, height_cm,
+      goal:           value.goal,
+      aggressiveness: value.aggressiveness,
+      target_weight_kg: target_weight,
     }, { headers: pyH(), timeout: 60000 });
 
     const result = predictRes.data;
+
+    // შედეგი DB-ში
     await db.query(`
-      INSERT INTO model_results (user_id,week,phase,tdee_kcal,fat_rec,mus_rec,reg_rec,
-        adaptation_factor,lambda_i,plateau_detected,balance_dw_kg,adapted_dw_kg,
-        expected_dm_fat_kg,expected_dm_mus_kg,expected_dm_reg_kg,diet_break_suggested)
+      INSERT INTO model_results
+        (user_id,week,phase,tdee_kcal,fat_rec,mus_rec,reg_rec,
+         adaptation_factor,lambda_i,plateau_detected,balance_dw_kg,adapted_dw_kg,
+         expected_dm_fat_kg,expected_dm_mus_kg,expected_dm_reg_kg,diet_break_suggested)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
       ON CONFLICT (user_id,week) DO UPDATE SET
-        phase=EXCLUDED.phase,tdee_kcal=EXCLUDED.tdee_kcal,fat_rec=EXCLUDED.fat_rec,
-        mus_rec=EXCLUDED.mus_rec,reg_rec=EXCLUDED.reg_rec,adaptation_factor=EXCLUDED.adaptation_factor,
-        lambda_i=EXCLUDED.lambda_i,plateau_detected=EXCLUDED.plateau_detected,
-        balance_dw_kg=EXCLUDED.balance_dw_kg,adapted_dw_kg=EXCLUDED.adapted_dw_kg,
-        expected_dm_fat_kg=EXCLUDED.expected_dm_fat_kg,expected_dm_mus_kg=EXCLUDED.expected_dm_mus_kg,
-        expected_dm_reg_kg=EXCLUDED.expected_dm_reg_kg,diet_break_suggested=EXCLUDED.diet_break_suggested,
+        phase=EXCLUDED.phase, tdee_kcal=EXCLUDED.tdee_kcal,
+        fat_rec=EXCLUDED.fat_rec, mus_rec=EXCLUDED.mus_rec, reg_rec=EXCLUDED.reg_rec,
+        adaptation_factor=EXCLUDED.adaptation_factor, lambda_i=EXCLUDED.lambda_i,
+        plateau_detected=EXCLUDED.plateau_detected,
+        balance_dw_kg=EXCLUDED.balance_dw_kg, adapted_dw_kg=EXCLUDED.adapted_dw_kg,
+        expected_dm_fat_kg=EXCLUDED.expected_dm_fat_kg,
+        expected_dm_mus_kg=EXCLUDED.expected_dm_mus_kg,
+        expected_dm_reg_kg=EXCLUDED.expected_dm_reg_kg,
+        diet_break_suggested=EXCLUDED.diet_break_suggested,
         calculated_at=NOW()
-    `, [userId,week,result.phase,result.tdee_kcal,result.fat_rec,result.mus_rec,result.reg_rec,
-        result.adaptation_factor,result.lambda_i,result.plateau_detected,result.balance_dw_kg,
-        result.adapted_dw_kg,result.expected_dm_fat_kg,result.expected_dm_mus_kg,
+    `, [userId,week,result.phase,result.tdee_kcal,
+        result.fat_rec,result.mus_rec,result.reg_rec,
+        result.adaptation_factor,result.lambda_i,
+        result.plateau_detected,result.balance_dw_kg,result.adapted_dw_kg,
+        result.expected_dm_fat_kg,result.expected_dm_mus_kg,
         result.expected_dm_reg_kg,result.diet_break_suggested]);
 
     return res.json({ result, total_checkins: allCheckins.rows.length });
-  } catch (err:any) {
+
+  } catch (err: any) {
     console.error('Python error:', err.message);
-    return res.json({ result: null, total_checkins: allCheckins.rows.length, error: 'მოდელის გამოთვლა ვერ მოხდა.' });
+    return res.json({
+      result: null,
+      total_checkins: allCheckins.rows.length,
+      error: 'მოდელის გამოთვლა ვერ მოხდა.'
+    });
   }
 });
 
 checkinRouter.get('/history', authenticate, async (req: any, res: Response) => {
-  const { rows: checkins } = await db.query('SELECT * FROM model_checkins WHERE user_id=$1 ORDER BY week DESC', [req.userId]);
-  const { rows: results } = await db.query('SELECT * FROM model_results WHERE user_id=$1 ORDER BY week DESC', [req.userId]);
+  const { rows: checkins } = await db.query(
+    'SELECT * FROM model_checkins WHERE user_id=$1 ORDER BY week DESC', [req.userId]);
+  const { rows: results } = await db.query(
+    'SELECT * FROM model_results WHERE user_id=$1 ORDER BY week DESC', [req.userId]);
   return res.json({ checkins, results });
 });
 
 checkinRouter.get('/latest', authenticate, async (req: any, res: Response) => {
-  const { rows } = await db.query('SELECT * FROM model_results WHERE user_id=$1 ORDER BY week DESC LIMIT 1', [req.userId]);
-  const { rows: cnt } = await db.query('SELECT COUNT(*) as count FROM model_checkins WHERE user_id=$1', [req.userId]);
+  const { rows } = await db.query(
+    'SELECT * FROM model_results WHERE user_id=$1 ORDER BY week DESC LIMIT 1', [req.userId]);
+  const { rows: cnt } = await db.query(
+    'SELECT COUNT(*) as count FROM model_checkins WHERE user_id=$1', [req.userId]);
   return res.json({ result: rows[0] || null, total_checkins: parseInt(cnt[0].count) });
 });
