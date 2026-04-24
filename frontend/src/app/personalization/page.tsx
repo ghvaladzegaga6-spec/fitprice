@@ -188,7 +188,7 @@ export default function PersonalizationPage() {
         excluded_categories: excludedCats,
         override_calories: selectedCalories,
       });
-      setBasket(data);
+      setBasket(data.basket, data.totals, data.targets);
       toast.success('კალათა გენერირდა!');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'შეცდომა');
